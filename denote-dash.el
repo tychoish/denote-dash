@@ -1,4 +1,9 @@
-;;; denote-dash.el --- Unified Denote dashboard: list view and dispatch -*- lexical-binding: t; -*- no-byte-compile: t; -*-
+;;; denote-dash.el --- Unified Denote dashboard: list view and dispatch -*- lexical-binding: t; -*-
+
+;; Author: tycho <garen@tychoish.com>
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1") (denote "3.0") (denote-sequence "0.3") (denote-review "1.0") (transient "0.4") (annotated-completing-read "0.1"))
+;; URL: https://github.com/tychoish/denote-dash
 
 ;;; Commentary:
 ;; Provides a tabulated-list browser for Denote notes (denote-dash-mode)
@@ -19,6 +24,7 @@
 
 (require 'denote)
 (require 'denote-sequence)
+(require 'denote-review)
 (require 'annotated-completing-read)
 
 ;;; Declarations
@@ -688,6 +694,7 @@ Returns a cons cell (SAVED-P . STALE-NAME)."
       (kill-buffer buf)
       (cons saved stale-name))))
 
+;;;###autoload
 (defun denote-dash-close-all-notes ()
   "Close every open Denote note buffer, prompting to save modified ones.
 For a modified buffer whose file no longer exists on disk — for example
@@ -737,6 +744,7 @@ killed."
 
 ;;; Sequence hierarchy switch-or-view
 
+;;;###autoload
 (defun denote-dash-hierarchy-switch-or-view ()
   "Select a visible hierarchy view window, or open a new one.
 When a window already displays a `denote-sequence-hierarchy-mode' buffer,
@@ -750,6 +758,7 @@ select it instead of opening a duplicate view via
       (select-window window)
     (call-interactively #'denote-sequence-view-hierarchy)))
 
+;;;###autoload
 (defun denote-dash-hierarchy-view-by-note (&optional depth)
   "View the sequence hierarchy scoped to a note chosen via ACR.
 Prompts for a Denote note with `denote-dash-note-prompt' and uses its
@@ -1405,7 +1414,7 @@ own buffer independently."
 ;;;###autoload
 (defun denote-dash-clone-view (&optional name)
   "Clone current view state into a new dedicated buffer `*denote-dash: NAME*'.
-Saves the view as NAME in `denote-dash-saved-views' and switches to the new buffer."
+Saves view as NAME in `denote-dash-saved-views' and switches to buffer."
   (interactive
    (list
     (let* ((names (seq-map #'denote-dash-view-name denote-dash-saved-views))

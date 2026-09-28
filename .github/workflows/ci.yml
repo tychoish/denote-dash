@@ -26,18 +26,13 @@ jobs:
 
       - name: Lint Source Code
         uses: tychoish/elisp-ci/lint@main
-        with:
-          dependencies: "denote transient annotated-completing-read"
 
       - name: Run ERT Tests
         uses: tychoish/elisp-ci@main
-        with:
-          dependencies: "denote transient annotated-completing-read"
 
       - name: Measure Code Coverage
         uses: tychoish/elisp-ci/coverage@main
         with:
-          dependencies: "denote transient annotated-completing-read"
           report-format: "lcov"
           output-file: "coverage/lcov.info"
 

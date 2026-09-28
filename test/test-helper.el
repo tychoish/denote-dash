@@ -13,6 +13,7 @@
        (test-dir (file-name-directory test-file))
        (root (file-name-directory (directory-file-name test-dir))))
   (setq test-helper-root root)
+  (add-to-list 'load-path root)
   (add-to-list 'load-path (expand-file-name "lisp" root))
   (let ((elpa-dir (expand-file-name "elpa" root)))
     (when (file-directory-p elpa-dir)

@@ -776,9 +776,12 @@ prompt for DEPTH via `denote-sequence-depth-prompt'."
 (defun denote-dash--hierarchy-sync-directory ()
   "Set `default-directory' to the file at point, else the first Denote directory.
 Each line in a `denote-sequence-view-hierarchy' buffer carries the note
-path in the `denote-sequence-hierarchy-file' text property."
+path in the `denote-sequence-hierarchy-file' text property; in a
+`denote-dash-mode' buffer it is the row id."
   (setq default-directory
-        (or (when-let* ((file (get-text-property (point) 'denote-sequence-hierarchy-file)))
+        (or (when-let* ((file (if (derived-mode-p 'denote-dash-mode)
+                                  (tabulated-list-get-id)
+                                (get-text-property (point) 'denote-sequence-hierarchy-file))))
               (file-name-directory file))
             (car (denote-directories))
             default-directory)))
@@ -789,6 +792,7 @@ path in the `denote-sequence-hierarchy-file' text property."
   (add-hook 'post-command-hook #'denote-dash--hierarchy-sync-directory nil t))
 
 (add-hook 'denote-sequence-hierarchy-mode-hook #'denote-dash--hierarchy-setup-directory)
+(add-hook 'denote-dash-mode-hook #'denote-dash--hierarchy-setup-directory)
 
 ;; `denote-sequence-hierarchy-find-file' opens via `denote-open-link-function',
 ;; which defaults to `find-file-other-window'.  Selecting a note from the

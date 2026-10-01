@@ -412,6 +412,17 @@ path that does not yet exist."
     (denote-dash--hierarchy-sync-directory)
     (should (equal "/some/where/" default-directory))))
 
+(ert-deftest denote-dash-test/dash-mode-sync-directory ()
+  "In `denote-dash-mode', default-directory follows the row at point."
+  (with-temp-buffer
+    (denote-dash-mode)
+    (let ((inhibit-read-only t))
+      (insert (propertize "row\n" 'tabulated-list-id "/some/where/20240101T120000--x.org"))
+      (goto-char (point-min))
+      (denote-dash--hierarchy-sync-directory)
+      (should (equal "/some/where/" default-directory))))
+  (should (memq #'denote-dash--hierarchy-setup-directory denote-dash-mode-hook)))
+
 (ert-deftest denote-dash-test/hierarchy-mode-hook-registered ()
   "The directory-setup function is on `denote-sequence-hierarchy-mode-hook'."
   (should (memq #'denote-dash--hierarchy-setup-directory

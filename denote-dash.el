@@ -615,6 +615,8 @@ in both ascending and descending order."
 (keymap-set denote-dash-mode-map "n" #'next-line)
 (keymap-set denote-dash-mode-map "p" #'previous-line)
 (keymap-set denote-dash-mode-map "g" #'denote-dash-refresh)
+(keymap-set denote-dash-mode-map "?" #'denote-dash-dispatch)
+(keymap-set denote-dash-mode-map "F" #'denote-dash-clear-filter)
 (with-eval-after-load 'denote-tree
   (keymap-set denote-dash-mode-map "l"   #'denote-tree-lint-sequences)
   (keymap-set denote-dash-mode-map "M-r" #'denote-tree-swap-with-parent)
@@ -1938,7 +1940,7 @@ place afterward via `revert-buffer'."
     ("rt" "retag (keywords)"   denote-dash-retag-file)
     ("rc" "convert file type"  denote-convert-file-type
      :if denote-dash--denote-convert-available-p)
-    ("raf" "update all from fm" denote-dash-rename-all-files-using-front-matter)]
+    ("ra" "update all from fm" denote-dash-rename-all-files-using-front-matter)]
    ["Sequence" :if denote-dash--denote-tree-available-p
     ("al" "lint sequences"     denote-tree-lint-sequences)
     ("ah" "fix frontmatter"    denote-tree-fix-sequence-frontmatter)
@@ -1977,13 +1979,13 @@ place afterward via `revert-buffer'."
     ("ed" "duplicates"         denote-explore-duplicate-notes)]
    ["Dash" :if-derived denote-dash-mode
     ("c" "toggle columns…"     denote-dash-column-transient)
-    ("w/" "filter menu"        denote-dash-filter-menu)
+    ("fm" "filter menu"        denote-dash-filter-menu)
+    ("fc" "clear grep filter"  denote-dash-clear-grep-filter)
     ("ws" "narrow to seq(s)"   denote-dash-narrow-to-sequence)
     ("wt" "toggle seq"         denote-dash-toggle-sequence-narrow)
     ("ww" "widen"              denote-dash-widen)
     ("wk" "toggle keyword"     denote-dash-toggle-keyword)
-    ("wg" "grep filter"        denote-dash-filter-grep)
-    ("wc" "clear grep filter"  denote-dash-clear-grep-filter)]
+    ("wg" "grep filter"        denote-dash-filter-grep)]
    ["Hierarchy" :if-derived denote-sequence-hierarchy-mode
     ("ha" "actions menu"       denote-dash-hierarchy-actions-menu)
     ("hz" "toggle persist fold" denote-tree-hierarchy-toggle-fold-sequence

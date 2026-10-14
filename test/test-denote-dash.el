@@ -583,6 +583,7 @@ prefix overlap between the bare \"c\" (Columns, visible only in
 `markdown-mode') — safe because the two groups are gated by mutually
 exclusive major modes and can never be simultaneously reachable."
   (let ((keys (transient-test/collect-keys 'denote-dash-dispatch)))
+    (should keys)
     (should-not (transient-test/duplicate-keys keys))))
 
 (ert-deftest denote-dash-test/dispatch-transient-new-keys-no-collisions ()
@@ -590,6 +591,7 @@ exclusive major modes and can never be simultaneously reachable."
   (let* ((keys (transient-test/collect-keys 'denote-dash-dispatch))
          (new-keys '("ws" "wt" "ww" "wk" "ak"))
          (conflicts (transient-test/key-prefix-conflicts keys)))
+    (should keys)
     (dolist (nk new-keys)
       (should (= 1 (seq-count (lambda (k) (equal k nk)) keys))))
     (should-not (seq-filter (lambda (c) (or (member (nth 0 c) new-keys)
@@ -599,6 +601,7 @@ exclusive major modes and can never be simultaneously reachable."
 (ert-deftest denote-dash-test/column-transient-no-key-collisions ()
   "`denote-dash-column-transient' has no duplicate keys or key/prefix shadowing."
   (let ((keys (transient-test/collect-keys 'denote-dash-column-transient)))
+    (should keys)
     (should-not (transient-test/duplicate-keys keys))
     (should-not (transient-test/key-prefix-conflicts keys))))
 

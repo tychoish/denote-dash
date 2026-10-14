@@ -38,17 +38,40 @@
 
 (defun transient-test/collect-keys (prefix-sym)
   "Return a list of all :key strings in PREFIX-SYM's transient layout.
+Supports both modern Transient (>=0.7, where suffix nodes are
+`(\\='transient-suffix :key ...)') and older built-in Transient in
+Emacs 29/30 (where suffix nodes are `(LEVEL CLASS (:key ...))').
 Uses an iterative walk so no recursion limit applies."
   (let ((queue (list (get prefix-sym 'transient--layout)))
         keys)
     (while queue
       (let ((node (pop queue)))
         (cond
+          ;; Vector (group/column specification): unpack into queue
           ((and (vectorp node) (not (byte-code-function-p node)))
            (setq queue (append (seq-into node 'list) queue)))
-          ((and (consp node) (eq (car node) 'transient-suffix))
+          ;; Modern Transient (>=0.7): (transient-suffix :key "..." ...)
+          ((and (consp node)
+                (symbolp (car node))
+                (string-prefix-p "transient-" (symbol-name (car node))))
            (when-let* ((key (plist-get (cdr node) :key)))
              (push key keys)))
+          ;; Legacy Transient (0.3-0.5, built-in Emacs 29/30): (LEVEL CLASS (:key "..." ...))
+          ((and (consp node)
+                (integerp (car node))
+                (symbolp (cadr node))
+                (string-prefix-p "transient-" (symbol-name (cadr node)))
+                (listp (caddr node)))
+           (when-let* ((key (plist-get (caddr node) :key)))
+             (push key keys)))
+          ;; Plist fallback: node is directly a plist starting with a keyword
+          ((and (consp node)
+                (keywordp (car node))
+                (plist-member node :key))
+           (when-let* ((key (plist-get node :key)))
+             (unless (member key keys)
+               (push key keys))))
+          ;; Generic cons: unpack children
           ((consp node)
            (setq queue (append node queue))))))
     (nreverse keys)))

@@ -759,3 +759,106 @@ exclusive major modes and can never be simultaneously reachable."
   (should (equal "short" (denote-dash--format-id "short"))))
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Buffer renaming, link formatting, and global mode / keymap tests
+
+(ert-deftest denote-dash-test/rename-buffer-with-sequence ()
+  "Buffer visiting a sequence note is renamed to `[d:SEQ] TITLE`."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T120000==1a--hello-world.org" dir))
+               buf)
+          (with-temp-file file
+            (insert "#+title: Hello World\n#+identifier: 20240101T120000\n#+signature: 1a\n"))
+          (setq buf (find-file-noselect file))
+          (with-current-buffer buf
+            (denote-dash-rename-buffer)
+            (should (equal (buffer-name) "[d:1a] hello-world")))
+          (kill-buffer buf))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/rename-buffer-without-sequence ()
+  "Buffer visiting a note without a sequence is renamed to `TITLE`."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T120000--plain-note.org" dir))
+               buf)
+          (with-temp-file file
+            (insert "#+title: Plain Note\n#+identifier: 20240101T120000\n"))
+          (setq buf (find-file-noselect file))
+          (with-current-buffer buf
+            (denote-dash-rename-buffer)
+            (should (equal (buffer-name) "plain-note")))
+          (kill-buffer buf))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/link-description-format ()
+  "Formats link description as `<title> [<sig>]` or `<title>`."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let ((seq-file (expand-file-name "20240101T120000==1a--seq-note.org" dir))
+              (plain-file (expand-file-name "20240101T130000--plain-note.org" dir)))
+          (with-temp-file seq-file
+            (insert "#+title: Seq Note\n#+identifier: 20240101T120000\n#+signature: 1a\n"))
+          (with-temp-file plain-file
+            (insert "#+title: Plain Note\n#+identifier: 20240101T130000\n"))
+          ;; With signature
+          (should (equal "Seq Note [1a]" (denote-dash-link-description-format seq-file)))
+          ;; Without signature
+          (should (equal "Plain Note" (denote-dash-link-description-format plain-file)))
+          ;; Active region override
+          (cl-letf (((symbol-function 'denote--get-active-region-content) (lambda () "custom anchor")))
+            (should (equal "custom anchor" (denote-dash-link-description-format seq-file)))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/global-mode-toggles-prefix ()
+  "Enabling denote-dash-global-mode binds prefix; disabling removes it."
+  (let ((denote-dash-global-mode nil)
+        (denote-dash-global-prefix "C-c d"))
+    (denote-dash-global-mode 1)
+    (should (equal (keymap-lookup denote-dash-global-mode-map "C-c d")
+                   denote-dash-global-map))
+    (denote-dash-global-mode -1)
+    (should-not (keymap-lookup denote-dash-global-mode-map "C-c d"))))
+
+(ert-deftest denote-dash-test/global-map-submaps ()
+  "Master prefix map binds expected commands and submaps."
+  (should (equal (keymap-lookup denote-dash-global-map ",") #'denote-dash))
+  (should (equal (keymap-lookup denote-dash-global-map ".") #'denote-dash-dispatch))
+  (should (equal (keymap-lookup denote-dash-global-map "n") #'denote))
+  (should (equal (keymap-lookup denote-dash-global-map "m") #'denote-open-or-create))
+  (should (equal (keymap-lookup denote-dash-global-map "b") #'denote-dash-backlinks))
+  (should (equal (keymap-lookup denote-dash-global-map "r") #'denote-dash-rename-file))
+  (should (keymap-lookup denote-dash-global-map "s"))
+  (should (keymap-lookup denote-dash-global-map "o"))
+  (should (keymap-lookup denote-dash-global-map "e"))
+  (should (keymap-lookup denote-dash-global-map "c"))
+  (should (keymap-lookup denote-dash-global-map "h")))
+
+(ert-deftest denote-dash-test/backlinks-delegation ()
+  "denote-dash-backlinks resolves target file and calls denote-backlinks."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T120000--note.org" dir))
+               captured-file)
+          (with-temp-file file
+            (insert "#+title: Note\n#+identifier: 20240101T120000\n"))
+          (cl-letf (((symbol-function 'denote-backlinks) (lambda (f) (setq captured-file f))))
+            (denote-dash-backlinks file)
+            (should (equal captured-file file))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/rename-file-using-front-matter-no-confirm ()
+  "denote-dash-rename-file-using-front-matter suppresses confirmations."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T120000--note.org" dir))
+               captured-confirmations)
+          (with-temp-file file
+            (insert "#+title: Note\n#+identifier: 20240101T120000\n"))
+          (cl-letf (((symbol-function 'denote-rename-file-using-front-matter)
+                     (lambda (_f) (setq captured-confirmations denote-rename-confirmations))))
+            (denote-dash-rename-file-using-front-matter file)
+            (should (null captured-confirmations))))
+      (delete-directory dir t))))

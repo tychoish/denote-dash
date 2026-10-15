@@ -2117,6 +2117,7 @@ place afterward via `revert-buffer'."
   "l" #'denote-link
   "b" #'denote-dash-backlinks
   "r" #'denote-dash-rename-file
+  "f" (if (fboundp 'consult-denote-find) #'consult-denote-find #'denote-find-file)
   "u" (cons "rename-using-front-matter" #'denote-dash-rename-file-using-front-matter)
   "k" #'denote-dash-save-and-kill-all-notes
   "g" (if (fboundp 'consult-denote-grep) #'consult-denote-grep #'denote-grep)

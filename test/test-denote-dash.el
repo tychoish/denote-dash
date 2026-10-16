@@ -830,6 +830,7 @@ exclusive major modes and can never be simultaneously reachable."
   (should (equal (keymap-lookup denote-dash-global-map "m") #'denote-open-or-create))
   (should (equal (keymap-lookup denote-dash-global-map "b") #'denote-dash-backlinks))
   (should (equal (keymap-lookup denote-dash-global-map "r") #'denote-dash-rename-file))
+  (should (keymap-lookup denote-dash-global-map "f"))
   (should (keymap-lookup denote-dash-global-map "s"))
   (should (keymap-lookup denote-dash-global-map "o"))
   (should (keymap-lookup denote-dash-global-map "e"))
@@ -844,7 +845,7 @@ exclusive major modes and can never be simultaneously reachable."
                captured-file)
           (with-temp-file file
             (insert "#+title: Note\n#+identifier: 20240101T120000\n"))
-          (cl-letf (((symbol-function 'denote-backlinks) (lambda (f) (setq captured-file f))))
+          (cl-letf (((symbol-function 'denote-backlinks) (lambda (&rest _) (setq captured-file buffer-file-name))))
             (denote-dash-backlinks file)
             (should (equal captured-file file))))
       (delete-directory dir t))))

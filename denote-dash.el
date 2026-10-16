@@ -46,6 +46,16 @@
 (declare-function denote-explore-barchart-keywords "denote-explore")
 (declare-function denote-explore-barchart-timeline "denote-explore")
 (declare-function denote-explore-duplicate-notes "denote-explore")
+(declare-function denote-explore-count-notes "denote-explore")
+(declare-function denote-explore-count-keywords "denote-explore")
+(declare-function denote-explore-random-link "denote-explore")
+(declare-function denote-explore-single-keywords "denote-explore")
+(declare-function denote-explore-zero-keywords "denote-explore")
+(declare-function denote-explore-rename-keyword "denote-explore")
+(declare-function denote-explore-sync-metadata "denote-explore")
+(declare-function denote-tree-new-sibling "denote-tree")
+(declare-function denote-tree-new-child "denote-tree")
+(declare-function denote-tree-new-parent "denote-tree")
 (declare-function denote-org-link-to-heading "denote-org")
 (declare-function denote-org-backlinks-for-heading "denote-org")
 (declare-function denote-org-extract-org-subtree "denote-org")
@@ -361,7 +371,7 @@ or (or ...), (and ...), (not ...) compound forms."
 ;;; Git status
 
 (defun denote-dash--build-git-cache ()
-  "Run git status on the denote root and return a hash table of path → status char."
+  "Run git status on denote root and return hash table of path → status char."
   (let ((cache (make-hash-table :test #'equal))
         (root (denote-dash--denote-root)))
     (when (file-directory-p (expand-file-name ".git" root))
@@ -777,7 +787,7 @@ prompt for DEPTH via `denote-sequence-depth-prompt'."
 ;;; Sequence hierarchy buffer directory
 
 (defun denote-dash--hierarchy-sync-directory ()
-  "Set `default-directory' to the file at point, else the first Denote directory.
+  "Set `default-directory' to point's file, else first Denote directory.
 Each line in a `denote-sequence-view-hierarchy' buffer carries the note
 path in the `denote-sequence-hierarchy-file' text property; in a
 `denote-dash-mode' buffer it is the row id."
@@ -790,7 +800,7 @@ path in the `denote-sequence-hierarchy-file' text property; in a
             default-directory)))
 
 (defun denote-dash--hierarchy-setup-directory ()
-  "Initialize a hierarchy buffer's `default-directory' and track point movement."
+  "Initialize hierarchy `default-directory' and track point movement."
   (denote-dash--hierarchy-sync-directory)
   (add-hook 'post-command-hook #'denote-dash--hierarchy-sync-directory nil t))
 
@@ -1718,7 +1728,7 @@ notes only, since sequence operations require one."
 
 ;;;###autoload
 (defun denote-dash-rename-buffer (&optional buffer)
-  "Rename denote BUFFER to `[d:SEQ] TITLE' or just TITLE when there is no sequence.
+  "Rename denote BUFFER to `[d:SEQ] TITLE' or just TITLE without sequence.
 Suitable as a value for `denote-rename-buffer-function'."
   (when-let* ((file (buffer-file-name buffer))
               ((denote-file-has-identifier-p file)))
@@ -1732,8 +1742,9 @@ Suitable as a value for `denote-rename-buffer-function'."
 
 ;;;###autoload
 (defun denote-dash-link-description-format (file &optional file-type)
-  "Format Denote link description for FILE with FILE-TYPE as `<title> [<signature>]`.
-Falls back to region text if active, or `<title>`, or `[<signature>]`.
+  "Format Denote link description for FILE with optional FILE-TYPE.
+Format as `<title> [<signature>]`.  Falls back to region text if active,
+or `<title>`, or `[<signature>]`.
 Suitable as a value for `denote-link-description-format'."
   (let* ((type (or file-type (denote-filetype-heuristics file)))
          (signature (denote-retrieve-filename-signature file))
@@ -1815,7 +1826,7 @@ instead of retyped."
     (or (cdr (assoc choice labels)) choice)))
 
 (defun denote-dash--rename-with-prompts (file prompts)
-  "Run `denote-rename-file' on FILE, prompting only for `denote-prompts' PROMPTS.
+  "Run `denote-rename-file' on FILE, prompting only for PROMPTS.
 Reuses the same title/keywords/signature/date/identifier resolution as
 `denote-rename-file' itself, so the only thing this changes is how FILE is
 selected."
@@ -1827,7 +1838,7 @@ selected."
 
 ;;;###autoload
 (defun denote-dash-rename-file (&optional file)
-  "Rename FILE per `denote-prompts', selecting FILE via `denote-dash-note-prompt'.
+  "Rename FILE per `denote-prompts', selecting via `denote-dash-note-prompt'.
 Same effect as `denote-rename-file', except FILE selection always uses the
 annotated, context-defaulting prompt instead of that command's own fallback
 to a plain `read-file-name', which is unusable from a `denote-dash' or
@@ -1849,11 +1860,12 @@ fallback to a plain `read-file-name'."
   "Display backlinks for FILE (or file from context / prompt)."
   (interactive)
   (let ((target (or file (denote-dash--resolve-file-interactive))))
-    (denote-backlinks target)))
+    (with-current-buffer (find-file-noselect target)
+      (denote-backlinks))))
 
 ;;;###autoload
 (defun denote-dash-rename-file-using-front-matter (&optional file)
-  "Rename FILE from its front matter, selecting FILE via `denote-dash-note-prompt'.
+  "Rename FILE from its front matter, via `denote-dash-note-prompt'.
 Same effect as `denote-rename-file-using-front-matter', except FILE
 selection always uses the annotated, context-defaulting prompt.  Also
 suppresses confirmation prompts by let-binding `denote-rename-confirmations'
@@ -2117,7 +2129,7 @@ place afterward via `revert-buffer'."
   "l" #'denote-link
   "b" #'denote-dash-backlinks
   "r" #'denote-dash-rename-file
-  "f" (if (fboundp 'consult-denote-find) #'consult-denote-find #'denote-find-file)
+  "f" (if (fboundp 'consult-denote-find) #'consult-denote-find #'denote-open-or-create)
   "u" (cons "rename-using-front-matter" #'denote-dash-rename-file-using-front-matter)
   "k" #'denote-dash-save-and-kill-all-notes
   "g" (if (fboundp 'consult-denote-grep) #'consult-denote-grep #'denote-grep)
@@ -2131,7 +2143,7 @@ place afterward via `revert-buffer'."
   "h" (cons "hierarchy" denote-dash-hierarchy-map))
 
 (defun denote-dash--update-sequence-map ()
-  "Ensure `denote-dash-sequence-map' references `denote-tree' functions if available."
+  "Ensure `denote-dash-sequence-map' references `denote-tree' if available."
   (when (fboundp 'denote-tree-new-sibling)
     (keymap-set denote-dash-sequence-map "s" #'denote-tree-new-sibling))
   (when (fboundp 'denote-tree-new-child)
@@ -2159,7 +2171,7 @@ place afterward via `revert-buffer'."
 
 ;;;###autoload
 (define-minor-mode denote-dash-global-mode
-  "Global minor mode providing Denote dashboard, sequence, and note keybindings."
+  "Global minor mode for Denote dashboard, sequence, and note keybindings."
   :global t
   :group 'denote-dash
   :keymap denote-dash-global-mode-map

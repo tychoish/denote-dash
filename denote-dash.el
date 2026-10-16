@@ -22,6 +22,7 @@
 (require 'seq)
 (require 'map)
 (require 'outline)
+(require 'savehist)
 
 (require 'denote)
 (require 'denote-sequence)
@@ -1664,7 +1665,6 @@ named `*denote-dash: NAME*'."
 
 ;;; Savehist
 
-(defvar savehist-additional-variables)
 (defun denote-dash--register-savehist-variables ()
   "Add denote-dash's persisted variables to `savehist-additional-variables'."
   (seq-do (lambda (var) (add-to-list 'savehist-additional-variables var))

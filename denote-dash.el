@@ -628,18 +628,17 @@ in both ascending and descending order."
 (keymap-set denote-dash-mode-map "g" #'denote-dash-refresh)
 (keymap-set denote-dash-mode-map "?" #'denote-dash-dispatch)
 (keymap-set denote-dash-mode-map "F" #'denote-dash-clear-filter)
-(with-eval-after-load 'denote-tree
-  (keymap-set denote-dash-mode-map "l"   #'denote-tree-lint-sequences)
-  (keymap-set denote-dash-mode-map "M-r" #'denote-tree-swap-with-parent)
-  (keymap-set denote-dash-mode-map "M-p" #'denote-tree-swap-with-previous)
-  (keymap-set denote-dash-mode-map "M-n" #'denote-tree-swap-with-next)
-  (keymap-set denote-dash-mode-map "k"   #'denote-tree-retag-sequence)
-  (keymap-set denote-dash-mode-map "m"   #'denote-tree-reparent)
-  (keymap-set denote-dash-mode-map "u"   #'denote-tree-renumber-recursive)
-  (keymap-set denote-dash-mode-map "i"   #'denote-tree-insert-sequence-note)
-  (keymap-set denote-dash-mode-map "h"   #'denote-tree-fix-sequence-frontmatter)
-  (keymap-set denote-dash-mode-map "C-l" #'denote-tree-fix-all-sequence-frontmatter)
-  (keymap-set denote-dash-mode-map "C-c C-r" #'denote-tree-repack-children))
+(keymap-set denote-dash-mode-map "l" #'denote-tree-lint-sequences)
+(keymap-set denote-dash-mode-map "M-r" #'denote-tree-swap-with-parent)
+(keymap-set denote-dash-mode-map "M-p" #'denote-tree-swap-with-previous)
+(keymap-set denote-dash-mode-map "M-n" #'denote-tree-swap-with-next)
+(keymap-set denote-dash-mode-map "k" #'denote-tree-retag-sequence)
+(keymap-set denote-dash-mode-map "m" #'denote-tree-reparent)
+(keymap-set denote-dash-mode-map "u" #'denote-tree-renumber-recursive)
+(keymap-set denote-dash-mode-map "i" #'denote-tree-insert-sequence-note)
+(keymap-set denote-dash-mode-map "h" #'denote-tree-fix-sequence-frontmatter)
+(keymap-set denote-dash-mode-map "C-l" #'denote-tree-fix-all-sequence-frontmatter)
+(keymap-set denote-dash-mode-map "C-c C-r" #'denote-tree-repack-children)
 (keymap-set denote-dash-mode-map "v" #'denote-dash-schedule-review-at-point)
 (keymap-set denote-dash-mode-map "?" #'denote-dash-dispatch)
 (keymap-set denote-dash-mode-map "q" #'quit-window)
@@ -1666,10 +1665,15 @@ named `*denote-dash: NAME*'."
 ;;; Savehist
 
 (defvar savehist-additional-variables)
-(with-eval-after-load 'savehist
-  (add-to-list 'savehist-additional-variables 'denote-dash--filter-history)
-  (add-to-list 'savehist-additional-variables 'denote-dash--persisted-columns)
-  (add-to-list 'savehist-additional-variables 'denote-dash-saved-views))
+(defun denote-dash--register-savehist-variables ()
+  "Add denote-dash's persisted variables to `savehist-additional-variables'."
+  (seq-do (lambda (var) (add-to-list 'savehist-additional-variables var))
+          '(denote-dash--filter-history
+            denote-dash--persisted-columns
+            denote-dash-saved-views)))
+
+(add-hook 'savehist-mode-hook #'denote-dash--register-savehist-variables)
+(add-hook 'denote-dash-mode-hook #'denote-dash--register-savehist-variables)
 
 (defun denote-dash-rename-all-files-using-front-matter ()
   "Rename every Denote note's filename to match its front matter.
@@ -2059,19 +2063,13 @@ place afterward via `revert-buffer'."
 
 ;;; Refresh listeners for denote-tree and denote-convert
 
-(defun denote-dash-refresh-all-buffers ()
-  "Refresh all live `denote-dash-mode' buffers."
+(defun denote-dash-refresh-all-buffers (&rest _)
+  "Refresh all live `denote-dash-mode' buffers.
+Ignores any hook arguments."
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
       (when (derived-mode-p 'denote-dash-mode)
         (denote-dash-refresh)))))
-
-(with-eval-after-load 'denote-tree
-  (denote-dash--update-sequence-map)
-  (add-hook 'denote-tree-after-rename-functions (lambda (&rest _) (denote-dash-refresh-all-buffers)))
-  (add-hook 'denote-tree-after-reseq-functions (lambda (&rest _) (denote-dash-refresh-all-buffers)))
-  (add-hook 'denote-tree-after-swap-functions (lambda (&rest _) (denote-dash-refresh-all-buffers)))
-  (add-hook 'denote-tree-after-lint-fix-functions (lambda (&rest _) (denote-dash-refresh-all-buffers))))
 
 ;;; Keymaps and Global Minor Mode
 
@@ -2181,8 +2179,13 @@ place afterward via `revert-buffer'."
     (when denote-dash-global-prefix
       (keymap-unset denote-dash-global-mode-map denote-dash-global-prefix t))))
 
-(with-eval-after-load 'denote-convert
-  (add-hook 'denote-convert-after-conversion-functions (lambda (&rest _) (denote-dash-refresh-all-buffers))))
+(add-hook 'denote-dash-mode-hook #'denote-dash--update-sequence-map)
+(add-hook 'denote-dash-global-mode-hook #'denote-dash--update-sequence-map)
+(add-hook 'denote-convert-after-conversion-functions #'denote-dash-refresh-all-buffers)
+(add-hook 'denote-tree-after-rename-functions #'denote-dash-refresh-all-buffers)
+(add-hook 'denote-tree-after-reseq-functions #'denote-dash-refresh-all-buffers)
+(add-hook 'denote-tree-after-swap-functions #'denote-dash-refresh-all-buffers)
+(add-hook 'denote-tree-after-lint-fix-functions #'denote-dash-refresh-all-buffers)
 
 (provide 'denote-dash)
 ;;; denote-dash.el ends here

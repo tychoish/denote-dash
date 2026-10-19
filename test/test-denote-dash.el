@@ -574,6 +574,8 @@ date string (\"YYYY-MM-DD\") written as the note's reviewdate frontmatter."
 ;; A transient's key strings must be unique and no single-char binding may
 ;; shadow a multi-char one, else the shadowed suffix is silently unreachable.
 
+(denote-dash--setup-transients)
+
 (ert-deftest denote-dash-test/dispatch-transient-no-key-collisions ()
   "`denote-dash-dispatch' has no duplicate keys.
 Prefix-shadowing is checked separately, scoped to the narrow/retag keys
@@ -604,6 +606,58 @@ exclusive major modes and can never be simultaneously reachable."
     (should keys)
     (should-not (transient-test/duplicate-keys keys))
     (should-not (transient-test/key-prefix-conflicts keys))))
+
+(ert-deftest denote-dash-test/setup-transients-multiple-calls-safe ()
+  "Calling `denote-dash--setup-transients' repeatedly (with and without force) is safe."
+  ;; Initial call
+  (should (progn (denote-dash--setup-transients) t))
+  (should denote-dash--transients-initialized)
+  ;; Repeated calls without force (noop / idempotent)
+  (should (progn (denote-dash--setup-transients) t))
+  (should (progn (denote-dash--setup-transients) t))
+  ;; Force re-runs
+  (should (progn (denote-dash--setup-transients t) t))
+  (should (progn (denote-dash--setup-transients t) t))
+  ;; Check that prefix and layout properties remain intact
+  (should (get 'denote-dash-dispatch 'transient--prefix))
+  (should (get 'denote-dash-dispatch 'transient--layout))
+  (should (get 'denote-dash-column-transient 'transient--prefix))
+  (should (get 'denote-dash-column-transient 'transient--layout))
+  (should (get 'denote-dash-sort-transient 'transient--prefix))
+  (should (get 'denote-dash-sort-transient 'transient--layout)))
+
+(ert-deftest denote-dash-test/setup-transients-no-key-collisions-after-force-reinit ()
+  "Prefix layouts remain free of duplicate keys after repeated forced re-initialization."
+  (dotimes (_ 3)
+    (denote-dash--setup-transients t))
+  (let ((dispatch-keys (transient-test/collect-keys 'denote-dash-dispatch))
+        (col-keys (transient-test/collect-keys 'denote-dash-column-transient)))
+    (should dispatch-keys)
+    (should-not (transient-test/duplicate-keys dispatch-keys))
+    (should col-keys)
+    (should-not (transient-test/duplicate-keys col-keys))
+    (should-not (transient-test/key-prefix-conflicts col-keys))))
+
+(ert-deftest denote-dash-test/setup-transients-stubs-ensure-init ()
+  "Interactive command wrappers for transients invoke setup when uninitialized."
+  (let ((denote-dash--transients-initialized nil))
+    (denote-dash--setup-transients)
+    (should denote-dash--transients-initialized)
+    (should (commandp 'denote-dash-dispatch))
+    (should (commandp 'denote-dash-column-transient))
+    (should (commandp 'denote-dash-sort-transient))
+    (should (commandp 'denote-dash-toggle-front-matter-titles))))
+
+(ert-deftest denote-dash-test/setup-transients-suffix-toggle-front-matter ()
+  "The toggle-front-matter suffix works and toggles state correctly after setup."
+  (denote-dash--setup-transients t)
+  (with-temp-buffer
+    (denote-dash-mode)
+    (let ((denote-dash-title-source 'filename))
+      (call-interactively #'denote-dash-toggle-front-matter-titles)
+      (should (eq denote-dash-title-source 'front-matter))
+      (call-interactively #'denote-dash-toggle-front-matter-titles)
+      (should (eq denote-dash-title-source 'filename)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Saved views (Bookmarks)

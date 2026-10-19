@@ -16,7 +16,9 @@
 
 ;;; Code:
 
-(require 'transient)
+(eval-when-compile
+  (require 'transient))
+
 (require 'tabulated-list)
 (require 'keymap)
 (require 'seq)
@@ -30,6 +32,9 @@
 (require 'annotated-completing-read)
 
 ;;; Declarations
+
+(declare-function transient-setup "transient")
+(declare-function transient-quit-one "transient")
 
 (declare-function consult-denote-find "consult-denote")
 (declare-function consult-denote-grep "consult-denote")
@@ -1623,45 +1628,7 @@ named `*denote-dash: NAME*'."
               (if (cdr tabulated-list-sort-key) "▼" "▲"))
     "sort: (none)"))
 
-(transient-define-prefix denote-dash-sort-transient ()
-  "Select and modify the active sort column in the *denote-dash* buffer."
-  [:description #'denote-dash--sort-description
-   ("s" "select column"    denote-dash-select-sort-column)
-   ("d" "toggle direction" denote-dash-toggle-sort-direction)
-   ("x" "clear"            denote-dash-clear-sort)])
 
-(defun denote-dash--front-matter-description ()
-  "Transient label showing current title source."
-  (if (eq denote-dash-title-source 'front-matter)
-      "titles: front-matter [on]"
-    "titles: front-matter [off]"))
-
-(transient-define-suffix denote-dash-toggle-front-matter-titles ()
-  "Toggle title rendering between filename and front-matter sources."
-  :description #'denote-dash--front-matter-description
-  (interactive)
-  (setq-local denote-dash-title-source
-              (if (eq denote-dash-title-source 'front-matter) 'filename 'front-matter))
-  (message "Title source: %s" denote-dash-title-source)
-  (denote-dash-refresh))
-
-(transient-define-prefix denote-dash-column-transient ()
-  "Toggle columns and display options in the *denote-dash* buffer."
-  [["Columns"
-    ("s" "sequence"  denote-dash-toggle-sequence-column)
-    ("f" "fold"      denote-dash-toggle-fold-column)
-    ("t" "title"     denote-dash-toggle-title-column)
-    ("k" "keywords"  denote-dash-toggle-keywords-column)
-    ("m" "modified"  denote-dash-toggle-modified-column)
-    ("i" "id"        denote-dash-toggle-id-column)
-    ("d" "directory" denote-dash-toggle-directory-column)
-    ("g" "git"       denote-dash-toggle-git-column)
-    ("v" "review status" denote-dash-toggle-review-column)
-    ("r" "review date"   denote-dash-toggle-reviewdate-column)
-    ("o" "sort…"     denote-dash-sort-transient)]
-   ["Display"
-    ("e" denote-dash-toggle-front-matter-titles)
-    ("w" "set column width" denote-dash-set-column-width)]])
 
 ;;; Savehist
 
@@ -1974,6 +1941,52 @@ place afterward via `revert-buffer'."
   "Return non-nil if `denote-convert' is available."
   (or (featurep 'denote-convert) (require 'denote-convert nil t)))
 
+(defun denote-dash--front-matter-description ()
+  "Transient label showing current title source."
+  (if (eq denote-dash-title-source 'front-matter)
+      "titles: front-matter [on]"
+    "titles: front-matter [off]"))
+
+(defvar denote-dash--transients-initialized nil
+  "Non-nil if transient menus for denote-dash have been defined.")
+
+(defun denote-dash--setup-transients (&optional force)
+  "Initialize transient menus for `denote-dash'.
+When FORCE is non-nil, re-initialize even if already initialized."
+  (when (or force (not denote-dash--transients-initialized))
+    (setq denote-dash--transients-initialized t)
+    (require 'transient)
+    (transient-define-prefix denote-dash-sort-transient ()
+      "Select and modify the active sort column in the *denote-dash* buffer."
+      [:description #'denote-dash--sort-description
+       ("s" "select column"    denote-dash-select-sort-column)
+       ("d" "toggle direction" denote-dash-toggle-sort-direction)
+       ("x" "clear"            denote-dash-clear-sort)])
+    (transient-define-suffix denote-dash-toggle-front-matter-titles ()
+      "Toggle title rendering between filename and front-matter sources."
+      :description #'denote-dash--front-matter-description
+      (interactive)
+      (setq-local denote-dash-title-source
+                  (if (eq denote-dash-title-source 'front-matter) 'filename 'front-matter))
+      (message "Title source: %s" denote-dash-title-source)
+      (denote-dash-refresh))
+    (transient-define-prefix denote-dash-column-transient ()
+      "Toggle columns and display options in the *denote-dash* buffer."
+      [["Columns"
+        ("s" "sequence"  denote-dash-toggle-sequence-column)
+        ("f" "fold"      denote-dash-toggle-fold-column)
+        ("t" "title"     denote-dash-toggle-title-column)
+        ("k" "keywords"  denote-dash-toggle-keywords-column)
+        ("m" "modified"  denote-dash-toggle-modified-column)
+        ("i" "id"        denote-dash-toggle-id-column)
+        ("d" "directory" denote-dash-toggle-directory-column)
+        ("g" "git"       denote-dash-toggle-git-column)
+        ("v" "review status" denote-dash-toggle-review-column)
+        ("r" "review date"   denote-dash-toggle-reviewdate-column)
+        ("o" "sort…"     denote-dash-sort-transient)]
+       ["Display"
+        ("e" denote-dash-toggle-front-matter-titles)
+        ("w" "set column width" denote-dash-set-column-width)]])
 ;;;###autoload
 (transient-define-prefix denote-dash-dispatch ()
   "Dispatch Denote commands by area."
@@ -2059,7 +2072,39 @@ place afterward via `revert-buffer'."
     ("ob" "heading backlinks"  denote-org-backlinks-for-heading)
     ("od" "dblock: links"      denote-org-dblock-insert-links)
     ("op" "dblock: backlinks"  denote-org-dblock-insert-backlinks)
-    ("of" "dblock: files"      denote-org-dblock-insert-files)]])
+    ("of" "dblock: files"      denote-org-dblock-insert-files)]])))
+
+(if (featurep 'transient)
+    (denote-dash--setup-transients)
+  (add-hook 'after-load-functions
+            (lambda (file)
+              (when (string-match-p "transient" file)
+                (denote-dash--setup-transients)))))
+
+(defun denote-dash-sort-transient (&optional args)
+  "Select and modify the active sort column in the *denote-dash* buffer."
+  (interactive)
+  (denote-dash--setup-transients)
+  (transient-setup 'denote-dash-sort-transient nil nil :scope args))
+
+(defun denote-dash-toggle-front-matter-titles ()
+  "Toggle title rendering between filename and front-matter sources."
+  (interactive)
+  (denote-dash--setup-transients)
+  (call-interactively #'denote-dash-toggle-front-matter-titles))
+
+(defun denote-dash-column-transient (&optional args)
+  "Toggle columns and display options in the *denote-dash* buffer."
+  (interactive)
+  (denote-dash--setup-transients)
+  (transient-setup 'denote-dash-column-transient nil nil :scope args))
+
+;;;###autoload
+(defun denote-dash-dispatch (&optional args)
+  "Dispatch Denote commands by area."
+  (interactive)
+  (denote-dash--setup-transients)
+  (transient-setup 'denote-dash-dispatch nil nil :scope args))
 
 ;;; Refresh listeners for denote-tree and denote-convert
 

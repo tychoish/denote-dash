@@ -42,6 +42,8 @@ Supports both modern Transient (>=0.7, where suffix nodes are
 `(\\='transient-suffix :key ...)') and older built-in Transient in
 Emacs 29/30 (where suffix nodes are `(LEVEL CLASS (:key ...))').
 Uses an iterative walk so no recursion limit applies."
+  (when (fboundp 'denote-dash--setup-transients)
+    (denote-dash--setup-transients))
   (let ((queue (list (get prefix-sym 'transient--layout)))
         keys)
     (while queue

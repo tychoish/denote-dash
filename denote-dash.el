@@ -35,7 +35,12 @@
 
 (declare-function transient-setup "transient")
 (declare-function transient-quit-one "transient")
+(declare-function transient-prefix "transient")
+(declare-function transient-suffix "transient")
+(declare-function transient--set-layout "transient")
 
+(declare-function consult-denote-mode "consult-denote")
+(declare-function consult-notes-denote-mode "consult-notes")
 (declare-function consult-denote-find "consult-denote")
 (declare-function consult-denote-grep "consult-denote")
 (declare-function consult-notes "consult-notes")
@@ -2082,7 +2087,8 @@ When FORCE is non-nil, re-initialize even if already initialized."
                 (denote-dash--setup-transients)))))
 
 (defun denote-dash-sort-transient (&optional args)
-  "Select and modify the active sort column in the *denote-dash* buffer."
+  "Select and modify the active sort column in the *denote-dash* buffer.
+Optional ARGS are passed to `transient-setup' as scope."
   (interactive)
   (denote-dash--setup-transients)
   (transient-setup 'denote-dash-sort-transient nil nil :scope args))
@@ -2094,14 +2100,16 @@ When FORCE is non-nil, re-initialize even if already initialized."
   (call-interactively #'denote-dash-toggle-front-matter-titles))
 
 (defun denote-dash-column-transient (&optional args)
-  "Toggle columns and display options in the *denote-dash* buffer."
+  "Toggle columns and display options in the *denote-dash* buffer.
+Optional ARGS are passed to `transient-setup' as scope."
   (interactive)
   (denote-dash--setup-transients)
   (transient-setup 'denote-dash-column-transient nil nil :scope args))
 
 ;;;###autoload
 (defun denote-dash-dispatch (&optional args)
-  "Dispatch Denote commands by area."
+  "Dispatch Denote commands by area.
+Optional ARGS are passed to `transient-setup' as scope."
   (interactive)
   (denote-dash--setup-transients)
   (transient-setup 'denote-dash-dispatch nil nil :scope args))
@@ -2163,6 +2171,86 @@ Ignores any hook arguments."
   "v" #'denote-dash-hierarchy-switch-or-view
   "t" #'denote-dash-hierarchy-view-by-note)
 
+(defvar denote-dash-global-map)
+
+(defcustom denote-dash-consult-delay 0.5
+  "Idle delay in seconds before initializing consult integrations.
+If nil, do not initialize automatically on idle; wait until a
+consult command is used."
+  :type '(choice (number :tag "Seconds")
+                 (const :tag "Never automatically" nil))
+  :group 'denote-dash)
+
+(defvar denote-dash--consult-timer nil
+  "Timer for lazy initialization of consult-denote and consult-notes modes.")
+
+(defvar denote-dash--consult-initialized nil
+  "Non-nil if consult integrations for denote-dash have been initialized.")
+
+(defun denote-dash--setup-consult (&optional force)
+  "Initialize `consult-denote-mode' and `consult-notes-denote-mode' if available.
+When FORCE is non-nil, re-run initialization even if already run.
+Also updates `denote-dash-global-map' to bind the active commands."
+  (when denote-dash--consult-timer
+    (cancel-timer denote-dash--consult-timer)
+    (setq denote-dash--consult-timer nil))
+  (when (or force (not denote-dash--consult-initialized))
+    (setq denote-dash--consult-initialized t)
+    ;; 1. consult-denote integration
+    (when (or (featurep 'consult-denote)
+              (locate-library "consult-denote"))
+      (require 'consult-denote nil t)
+      (when (fboundp 'consult-denote-mode)
+        (unless (bound-and-true-p consult-denote-mode)
+          (consult-denote-mode 1)))
+      (when (and (boundp 'denote-dash-global-map) (fboundp 'consult-denote-find))
+        (keymap-set denote-dash-global-map "f" #'consult-denote-find))
+      (when (and (boundp 'denote-dash-global-map) (fboundp 'consult-denote-grep))
+        (keymap-set denote-dash-global-map "g" #'consult-denote-grep)))
+    ;; 2. consult-notes integration
+    (when (or (featurep 'consult-notes)
+              (locate-library "consult-notes"))
+      (require 'consult-notes nil t)
+      (when (fboundp 'consult-notes-denote-mode)
+        (unless (bound-and-true-p consult-notes-denote-mode)
+          (consult-notes-denote-mode 1)))
+      (when (and (boundp 'denote-dash-global-map) (fboundp 'consult-notes))
+        (keymap-set denote-dash-global-map ";" #'consult-notes))
+      (when (and (boundp 'denote-dash-global-map) (fboundp 'consult-notes-search-in-all-notes))
+        (keymap-set denote-dash-global-map "/" #'consult-notes-search-in-all-notes)))))
+
+(defun denote-dash-find-file ()
+  "Find a Denote file using `consult-denote-find' or fallback."
+  (interactive)
+  (denote-dash--setup-consult)
+  (call-interactively (if (fboundp 'consult-denote-find)
+                          #'consult-denote-find
+                        #'denote-open-or-create)))
+
+(defun denote-dash-grep ()
+  "Search Denote files using `consult-denote-grep' or fallback."
+  (interactive)
+  (denote-dash--setup-consult)
+  (call-interactively (if (fboundp 'consult-denote-grep)
+                          #'consult-denote-grep
+                        #'denote-grep)))
+
+(defun denote-dash-consult-notes ()
+  "Open notes using `consult-notes' if available."
+  (interactive)
+  (denote-dash--setup-consult)
+  (if (fboundp 'consult-notes)
+      (call-interactively #'consult-notes)
+    (user-error "consult-notes is not available")))
+
+(defun denote-dash-consult-notes-search ()
+  "Search notes using `consult-notes-search-in-all-notes' if available."
+  (interactive)
+  (denote-dash--setup-consult)
+  (if (fboundp 'consult-notes-search-in-all-notes)
+      (call-interactively #'consult-notes-search-in-all-notes)
+    (user-error "consult-notes is not available")))
+
 (defvar-keymap denote-dash-global-map
   :doc "Global prefix keymap for Denote and denote-dash commands."
   "," #'denote-dash
@@ -2172,13 +2260,13 @@ Ignores any hook arguments."
   "l" #'denote-link
   "b" #'denote-dash-backlinks
   "r" #'denote-dash-rename-file
-  "f" (if (fboundp 'consult-denote-find) #'consult-denote-find #'denote-open-or-create)
+  "f" (if (fboundp 'consult-denote-find) #'consult-denote-find #'denote-dash-find-file)
   "u" (cons "rename-using-front-matter" #'denote-dash-rename-file-using-front-matter)
   "k" #'denote-dash-save-and-kill-all-notes
-  "g" (if (fboundp 'consult-denote-grep) #'consult-denote-grep #'denote-grep)
+  "g" (if (fboundp 'consult-denote-grep) #'consult-denote-grep #'denote-dash-grep)
   "j" (when (fboundp 'denote-journal-new-entry) #'denote-journal-new-entry)
-  ";" (when (fboundp 'consult-notes) #'consult-notes)
-  "/" (when (fboundp 'consult-notes-search-in-all-notes) #'consult-notes-search-in-all-notes)
+  ";" (if (fboundp 'consult-notes) #'consult-notes #'denote-dash-consult-notes)
+  "/" (if (fboundp 'consult-notes-search-in-all-notes) #'consult-notes-search-in-all-notes #'denote-dash-consult-notes-search)
   "s" (cons "sequence" denote-dash-sequence-map)
   "o" (cons "org" denote-dash-org-map)
   "e" (cons "explore" denote-dash-explore-map)
@@ -2219,13 +2307,29 @@ Ignores any hook arguments."
   :group 'denote-dash
   :keymap denote-dash-global-mode-map
   (if denote-dash-global-mode
-      (when denote-dash-global-prefix
-        (keymap-set denote-dash-global-mode-map denote-dash-global-prefix denote-dash-global-map))
+      (progn
+        (when denote-dash-global-prefix
+          (keymap-set denote-dash-global-mode-map denote-dash-global-prefix denote-dash-global-map))
+        (when denote-dash--consult-timer
+          (cancel-timer denote-dash--consult-timer)
+          (setq denote-dash--consult-timer nil))
+        (when (numberp denote-dash-consult-delay)
+          (setq denote-dash--consult-timer
+                (run-with-idle-timer denote-dash-consult-delay nil #'denote-dash--setup-consult))))
     (when denote-dash-global-prefix
-      (keymap-unset denote-dash-global-mode-map denote-dash-global-prefix t))))
+      (keymap-unset denote-dash-global-mode-map denote-dash-global-prefix t))
+    (when denote-dash--consult-timer
+      (cancel-timer denote-dash--consult-timer)
+      (setq denote-dash--consult-timer nil))))
 
 (add-hook 'denote-dash-mode-hook #'denote-dash--update-sequence-map)
 (add-hook 'denote-dash-global-mode-hook #'denote-dash--update-sequence-map)
+(add-hook 'after-load-functions
+          (lambda (file)
+            (when (and denote-dash-global-mode
+                       (or (string-match-p "consult-denote" file)
+                           (string-match-p "consult-notes" file)))
+              (denote-dash--setup-consult))))
 (add-hook 'denote-convert-after-conversion-functions #'denote-dash-refresh-all-buffers)
 (add-hook 'denote-tree-after-rename-functions #'denote-dash-refresh-all-buffers)
 (add-hook 'denote-tree-after-reseq-functions #'denote-dash-refresh-all-buffers)

@@ -891,6 +891,33 @@ exclusive major modes and can never be simultaneously reachable."
   (should (keymap-lookup denote-dash-global-map "c"))
   (should (keymap-lookup denote-dash-global-map "h")))
 
+(ert-deftest denote-dash-test/setup-consult-idempotent ()
+  "Calling `denote-dash--setup-consult' repeatedly is safe and enables modes."
+  (should (progn (denote-dash--setup-consult) t))
+  (should denote-dash--consult-initialized)
+  (should (progn (denote-dash--setup-consult) t))
+  (should (progn (denote-dash--setup-consult t) t))
+  (when (fboundp 'consult-denote-mode)
+    (should consult-denote-mode))
+  (when (fboundp 'consult-notes-denote-mode)
+    (should consult-notes-denote-mode)))
+
+(ert-deftest denote-dash-test/global-mode-timer-lifecycle ()
+  "Enabling `denote-dash-global-mode' manages consult idle timer; disabling cleans up."
+  (let ((denote-dash-global-mode nil)
+        (denote-dash-consult-delay 10.0))
+    (denote-dash-global-mode 1)
+    (should denote-dash--consult-timer)
+    (denote-dash-global-mode -1)
+    (should-not denote-dash--consult-timer)))
+
+(ert-deftest denote-dash-test/consult-stubs-are-commands ()
+  "Consult wrapper functions are interactive commands."
+  (should (commandp 'denote-dash-find-file))
+  (should (commandp 'denote-dash-grep))
+  (should (commandp 'denote-dash-consult-notes))
+  (should (commandp 'denote-dash-consult-notes-search)))
+
 (ert-deftest denote-dash-test/backlinks-delegation ()
   "denote-dash-backlinks resolves target file and calls denote-backlinks."
   (let ((dir (make-temp-file "denote-dash-test-" t)))

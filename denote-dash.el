@@ -2,7 +2,7 @@
 
 ;; Author: tycho <garen@tychoish.com>
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (denote "3.0") (denote-sequence "0.3") (denote-review "1.0") (transient "0.4") (annotated-completing-read "0.1"))
+;; Package-Requires: ((emacs "29.1") (denote "3.0") (denote-sequence "0.3") (denote-review "1.0") (transient "0.4") (annotated-completing-read "0.1") (gen "0.1"))
 ;; URL: https://github.com/tychoish/denote-dash
 
 ;;; Commentary:
@@ -30,8 +30,13 @@
 (require 'denote-sequence)
 (require 'denote-review)
 (require 'annotated-completing-read)
+(require 'gen)
 
 ;;; Declarations
+
+(declare-function sprite-fleet-each "sprite-fleet")
+(declare-function sprite-fleet-cancel "sprite-fleet")
+(declare-function sprite-fleet-running-p "sprite-fleet")
 
 (declare-function transient-setup "transient")
 (declare-function transient-quit-one "transient")
@@ -191,6 +196,28 @@ When nil (the default), tags are omitted from hierarchy line display."
 (defcustom denote-dash-hierarchy-excluded-tags nil
   "List of tag strings to exclude from sequence hierarchy view by default."
   :type '(repeat string)
+  :group 'denote-dash)
+
+(defcustom denote-dash-rename-batch-concurrency 1
+  "Concurrency limit for batch note renaming.
+In single-process Emacs, 1 with cooperative delay yields to the event loop;
+when using `sprite-fleet', specifies the number of worker sprites."
+  :type 'natnum
+  :group 'denote-dash)
+
+(defcustom denote-dash-rename-batch-delay 0.0
+  "Cooperative yielding delay (in seconds) between items for batch renaming."
+  :type 'number
+  :group 'denote-dash)
+
+(defcustom denote-dash-rename-use-sprite-fleet nil
+  "When non-nil and `sprite-fleet' is available, dispatch across daemons."
+  :type 'boolean
+  :group 'denote-dash)
+
+(defcustom denote-dash-rename-progress-interval 5
+  "Interval of processed items between progress messages during batch rename."
+  :type 'natnum
   :group 'denote-dash)
 
 (defvar-local denote-dash-hierarchy--show-tags :unset
@@ -1647,32 +1674,169 @@ named `*denote-dash: NAME*'."
 (add-hook 'savehist-mode-hook #'denote-dash--register-savehist-variables)
 (add-hook 'denote-dash-mode-hook #'denote-dash--register-savehist-variables)
 
-(defun denote-dash-rename-all-files-using-front-matter ()
-  "Rename every Denote note's filename to match its front matter.
-Inverse of `denote-dash-fix-all-sequence-frontmatter': that command makes
-frontmatter match the filename, this makes the filename match frontmatter,
-for every note, via `denote-rename-file-using-front-matter'."
+(defvar denote-dash--rename-all-handle nil
+  "Active async handle for batch note renaming, or nil.")
+
+(defun denote-dash-rename-all-running-p ()
+  "Return non-nil if a batch note rename operation is currently in progress."
+  (and denote-dash--rename-all-handle
+       (cond
+        ((functionp denote-dash--rename-all-handle)
+         (not (funcall denote-dash--rename-all-handle :finished-p)))
+        ((fboundp 'sprite-fleet-running-p)
+         (sprite-fleet-running-p denote-dash--rename-all-handle))
+        (t t))))
+
+(defun denote-dash-rename-all-cancel ()
+  "Cancel an in-progress batch note rename operation."
   (interactive)
-  (let* ((files (denote-directory-files))
-         (n (length files)))
-    (unless (yes-or-no-p (format "Rename %d note%s from front matter? "
-                                 n (if (= n 1) "" "s")))
-      (user-error "Cancelled"))
-    (let ((renamed 0) (errors 0)
-          (denote-rename-confirmations nil))
-      (dolist (file files)
-        (condition-case err
-            (progn (denote-rename-file-using-front-matter file)
-                   (setq renamed (1+ renamed)))
-          (error
-           (setq errors (1+ errors))
-           (message "Skipped %s: %s"
-                    (file-name-nondirectory file)
-                    (error-message-string err)))))
-      (message "Renamed %d/%d note%s%s."
-               renamed n (if (= renamed 1) "" "s")
-               (if (> errors 0) (format " (%d errors)" errors) "")))
-    (when (derived-mode-p 'denote-dash-mode) (denote-dash-refresh))))
+  (if (not (denote-dash-rename-all-running-p))
+      (message "No batch rename is currently running.")
+    (cond
+     ((functionp denote-dash--rename-all-handle)
+      (funcall denote-dash--rename-all-handle :cancel))
+     ((and (fboundp 'sprite-fleet-cancel)
+           (not (functionp denote-dash--rename-all-handle)))
+      (sprite-fleet-cancel denote-dash--rename-all-handle)))
+    (setq denote-dash--rename-all-handle nil)
+    (message "Batch rename cancelled.")))
+
+(cl-defun denote-dash-rename-all-files-using-front-matter
+    (&key files concurrency delay use-sprite-fleet on-done (confirm t))
+  "Rename every Denote note's filename to match its front matter.
+Inverse of `denote-tree-fix-all-sequence-frontmatter': that command makes
+frontmatter match the filename, this makes the filename match frontmatter,
+for every note, via `denote-rename-file-using-front-matter'.
+
+Uses `gen.el' yielding generator iterators to process notes cooperatively
+without blocking the Emacs event loop.  When USE-SPRITE-FLEET or
+`denote-dash-rename-use-sprite-fleet' is non-nil and `sprite-fleet' is
+available, dispatches across worker daemons.
+
+Optional keyword arguments:
+FILES: list of note files to process (default `denote-directory-files').
+CONCURRENCY: concurrent items or workers (default
+  `denote-dash-rename-batch-concurrency').
+DELAY: delay in seconds between items (default
+  `denote-dash-rename-batch-delay').
+USE-SPRITE-FLEET: boolean to force or bypass sprite-fleet.
+ON-DONE: callback `(lambda (stats))' called upon completion with a plist
+  `(:renamed N :errors N :total N)'.
+CONFIRM: if nil, skips confirmation prompt (default t when interactive)."
+  (interactive)
+  (when (denote-dash-rename-all-running-p)
+    (if (and confirm (called-interactively-p 'any))
+        (if (yes-or-no-p "A batch rename is already running. Cancel it and restart? ")
+            (denote-dash-rename-all-cancel)
+          (user-error "Aborted: batch rename already in progress"))
+      (denote-dash-rename-all-cancel)))
+  (let* ((target-files (or files (denote-directory-files)))
+         (n (length target-files)))
+    (when (zerop n)
+      (user-error "No Denote notes found"))
+    (when (and confirm (called-interactively-p 'any))
+      (unless (yes-or-no-p (format "Rename %d note%s from front matter? "
+                                   n (if (= n 1) "" "s")))
+        (user-error "Cancelled")))
+    (let* ((conc (or concurrency denote-dash-rename-batch-concurrency))
+           (del (or delay denote-dash-rename-batch-delay))
+           (fleet-p (if (null use-sprite-fleet)
+                        denote-dash-rename-use-sprite-fleet
+                      use-sprite-fleet))
+           (renamed 0)
+           (errors 0)
+           (processed 0)
+           (interval (max 1 (or denote-dash-rename-progress-interval 1)))
+           (finish-fn
+            (lambda ()
+              (setq denote-dash--rename-all-handle nil)
+              (message "Renamed %d/%d note%s%s."
+                       renamed n (if (= renamed 1) "" "s")
+                       (if (> errors 0) (format " (%d errors)" errors) ""))
+              (when (derived-mode-p 'denote-dash-mode)
+                (denote-dash-refresh))
+              (when on-done
+                (funcall on-done (list :renamed renamed :errors errors :total n))))))
+      (cond
+       ;; Sprite fleet dispatch if requested and available
+       ((and fleet-p
+             (require 'sprite-fleet nil t)
+             (fboundp 'sprite-fleet-each))
+        (let ((denote-dir (if (fboundp 'denote-directories) (car (denote-directories)) denote-directory)))
+          (message "Starting batch rename of %d notes across sprite fleet..." n)
+          (setq denote-dash--rename-all-handle
+                (sprite-fleet-each
+                 (lambda (file)
+                   (require 'denote)
+                   (setq denote-directory denote-dir)
+                   (let ((denote-rename-confirmations nil))
+                     (condition-case err
+                         (progn
+                           (denote-rename-file-using-front-matter file)
+                           (list :ok file))
+                       (error
+                        (list :error (error-message-string err) file)))))
+                 target-files
+                 :fleet-size conc
+                 :delay del
+                 :on-item (lambda (_item res _idx)
+                            (cl-incf processed)
+                            (if (eq (car res) :ok)
+                                (cl-incf renamed)
+                              (cl-incf errors)
+                              (message "Skipped %s: %s"
+                                       (file-name-nondirectory (caddr res))
+                                       (cadr res)))
+                            (when (or (= processed n) (zerop (mod processed interval)))
+                              (message "Renaming from front matter [%d/%d]..." processed n)))
+                 :on-done (lambda (_results)
+                            (funcall finish-fn))))))
+       ;; Default: gen.el yielding generator iterator with cooperative async event loop drainage
+       ((fboundp 'gen-run-async)
+        (let* ((stream (gen-wrap (iter-make (dolist (file target-files) (iter-yield file))))))
+          (message "Renaming %d notes from front matter asynchronously..." n)
+          (let ((runner
+                 (gen-run-async
+                  (lambda (file done-cb)
+                    (unwind-protect
+                        (condition-case err
+                            (let ((denote-rename-confirmations nil))
+                              (denote-rename-file-using-front-matter file)
+                              (cl-incf renamed))
+                          (error
+                           (cl-incf errors)
+                           (message "Skipped %s: %s"
+                                    (file-name-nondirectory file)
+                                    (error-message-string err))))
+                      (cl-incf processed)
+                      (when (or (= processed n) (zerop (mod processed interval)))
+                        (message "Renaming from front matter [%d/%d]..." processed n))
+                      (funcall done-cb)))
+                  stream
+                  :concurrency conc
+                  :delay del
+                  :on-done finish-fn
+                  :on-error (lambda (err)
+                              (setq denote-dash--rename-all-handle nil)
+                              (message "Batch rename error: %S" err)))))
+            (if (and (functionp runner) (funcall runner :finished-p))
+                (setq denote-dash--rename-all-handle nil)
+              (setq denote-dash--rename-all-handle runner)))))
+       ;; Fallback to synchronous dolist if gen-run-async is not loaded
+       (t
+        (let ((denote-rename-confirmations nil))
+          (dolist (file target-files)
+            (condition-case err
+                (progn
+                  (denote-rename-file-using-front-matter file)
+                  (cl-incf renamed))
+              (error
+               (cl-incf errors)
+               (message "Skipped %s: %s"
+                        (file-name-nondirectory file)
+                        (error-message-string err)))))
+          (funcall finish-fn))))
+      denote-dash--rename-all-handle)))
 
 ;;; Target file resolution
 
@@ -2018,7 +2182,9 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("rt" "retag (keywords)"   denote-dash-retag-file)
     ("rc" "convert file type"  denote-convert-file-type
      :if denote-dash--denote-convert-available-p)
-    ("ra" "update all from fm" denote-dash-rename-all-files-using-front-matter)]
+    ("ra" "update all from fm" denote-dash-rename-all-files-using-front-matter)
+    ("rx" "cancel rename all"  denote-dash-rename-all-cancel
+     :if denote-dash-rename-all-running-p)]
    ["Sequence" :if denote-dash--denote-tree-available-p
     ("al" "lint sequences"     denote-tree-lint-sequences)
     ("ah" "fix frontmatter"    denote-tree-fix-sequence-frontmatter)

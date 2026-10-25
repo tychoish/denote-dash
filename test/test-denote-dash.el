@@ -944,3 +944,93 @@ exclusive major modes and can never be simultaneously reachable."
             (denote-dash-rename-file-using-front-matter file)
             (should (null captured-confirmations))))
       (delete-directory dir t))))
+
+
+(ert-deftest denote-dash-test/rename-all-files-using-front-matter-yielding-async ()
+  "denote-dash-rename-all-files-using-front-matter processes files via yielding iterator."
+  (let* ((files (list "/fake/dir/20260101T000000--one__tag.org"
+                      "/fake/dir/20260101T000001--two__tag.org"
+                      "/fake/dir/20260101T000002--three__tag.org"))
+         (renamed-files nil)
+         (done-stats nil))
+    (cl-letf (((symbol-function 'denote-rename-file-using-front-matter)
+               (lambda (f) (push f renamed-files))))
+      (denote-dash-rename-all-files-using-front-matter
+       :files files
+       :concurrency 1
+       :delay 0.0
+       :confirm nil
+       :on-done (lambda (stats) (setq done-stats stats)))
+      ;; Wait for async timers to complete
+      (let ((timeout 5.0)
+            (start (float-time)))
+        (while (and (null done-stats)
+                    (< (- (float-time) start) timeout))
+          (sit-for 0.02)))
+      (should (equal done-stats '(:renamed 3 :errors 0 :total 3)))
+      (should (equal (length renamed-files) 3))
+      (should-not denote-dash--rename-all-handle))))
+
+(ert-deftest denote-dash-test/rename-all-files-using-front-matter-error-handling ()
+  "Errors on individual files do not halt batch rename."
+  (let* ((files (list "/fake/dir/ok1.org"
+                      "/fake/dir/fail.org"
+                      "/fake/dir/ok2.org"))
+         (processed nil)
+         (done-stats nil))
+    (cl-letf (((symbol-function 'denote-rename-file-using-front-matter)
+               (lambda (f)
+                 (push f processed)
+                 (when (string-match-p "fail" f)
+                   (error "Disk read error")))))
+      (denote-dash-rename-all-files-using-front-matter
+       :files files
+       :concurrency 1
+       :delay 0.0
+       :confirm nil
+       :on-done (lambda (stats) (setq done-stats stats)))
+      (let ((timeout 5.0)
+            (start (float-time)))
+        (while (and (null done-stats)
+                    (< (- (float-time) start) timeout))
+          (sit-for 0.02)))
+      (should (equal done-stats '(:renamed 2 :errors 1 :total 3)))
+      (should (equal (length processed) 3))
+      (should-not denote-dash--rename-all-handle))))
+
+(ert-deftest denote-dash-test/rename-all-files-using-front-matter-cancellation ()
+  "denote-dash-rename-all-cancel halts an in-flight batch job."
+  (let* ((files (list "/fake/dir/1.org" "/fake/dir/2.org" "/fake/dir/3.org" "/fake/dir/4.org"))
+         (handle (denote-dash-rename-all-files-using-front-matter
+                  :files files
+                  :concurrency 1
+                  :delay 1.0
+                  :confirm nil)))
+    (should (denote-dash-rename-all-running-p))
+    (denote-dash-rename-all-cancel)
+    (should-not (denote-dash-rename-all-running-p))
+    (should-not denote-dash--rename-all-handle)))
+
+(ert-deftest denote-dash-test/rename-all-files-using-front-matter-sprite-fleet ()
+  "When requested and available, dispatches via sprite-fleet-each."
+  (let* ((files (list "/fake/dir/1.org" "/fake/dir/2.org"))
+         (dispatched nil)
+         (orig-require (symbol-function 'require))
+         (orig-fboundp (symbol-function 'fboundp)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'require)
+                   (lambda (feat &optional path noerror)
+                     (if (eq feat 'sprite-fleet) t (funcall orig-require feat path noerror))))
+                  ((symbol-function 'fboundp)
+                   (lambda (sym)
+                     (if (eq sym 'sprite-fleet-each) t (funcall orig-fboundp sym))))
+                  ((symbol-function 'sprite-fleet-each)
+                   (lambda (_fn target-files &rest _rest)
+                     (setq dispatched target-files)
+                     :mock-fleet-handle)))
+          (denote-dash-rename-all-files-using-front-matter
+           :files files
+           :use-sprite-fleet t
+           :confirm nil)
+          (should (equal dispatched files)))
+      (setq denote-dash--rename-all-handle nil))))

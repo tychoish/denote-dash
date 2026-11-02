@@ -545,6 +545,7 @@ date string (\"YYYY-MM-DD\") written as the note's reviewdate frontmatter."
   (let ((dir (make-temp-file "denote-test" t)))
     (unwind-protect
         (let ((file (denote-dash-test--make-org-note-with-reviewdate dir "20260101T000000" "2020-01-01")))
+          (denote-dash-global-mode 1)
           (with-temp-buffer
             (denote-dash-mode)
             (setq tabulated-list-entries `((,file [" " "20260101T000000" "Title" "kw" "id"])))
@@ -555,7 +556,9 @@ date string (\"YYYY-MM-DD\") written as the note's reviewdate frontmatter."
             (with-current-buffer (find-file-noselect file)
               (goto-char (point-min))
               (should (re-search-forward (format-time-string "%Y-%m-%d") nil t)))))
+      (denote-dash-global-mode -1)
       (delete-directory dir t))))
+
 (ert-deftest denote-dash-test/denote-review-display-list-default-filter ()
   "denote-review-display-list without args filters into due notes (past, today, < 1 week)."
   (let ((dir (make-temp-file "denote-test" t)))
@@ -564,9 +567,11 @@ date string (\"YYYY-MM-DD\") written as the note's reviewdate frontmatter."
                (file1 (denote-dash-test--make-org-note-with-reviewdate dir "20260101T000000" "2020-01-01"))
                (file2 (denote-dash-test--make-org-note-with-reviewdate dir "20260101T000001" today-str))
                (denote-directory dir))
+          (denote-dash-global-mode 1)
           (denote-review-display-list)
           (with-current-buffer "*denote-review-results*"
             (should (= 2 (length (funcall tabulated-list-entries))))))
+      (denote-dash-global-mode -1)
       (delete-directory dir t))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Transient key-collision regressions
@@ -1034,3 +1039,39 @@ exclusive major modes and can never be simultaneously reachable."
            :confirm nil)
           (should (equal dispatched files)))
       (setq denote-dash--rename-all-handle nil))))
+
+(ert-deftest denote-dash-test/global-mode-managed-settings ()
+  "Enabling `denote-dash-global-mode' applies managed settings; disabling reverts them."
+  (let ((denote-dash-global-mode nil)
+        (orig-rename (when (boundp 'denote-rename-buffer-function) denote-rename-buffer-function))
+        (orig-desc (when (boundp 'denote-link-description-format) denote-link-description-format)))
+    (unwind-protect
+        (progn
+          (setq denote-rename-buffer-function #'ignore)
+          (setq denote-link-description-format #'ignore)
+          (denote-dash-global-mode 1)
+          (should (eq denote-rename-buffer-function #'denote-dash-rename-buffer))
+          (should (eq denote-link-description-format #'denote-dash-link-description-format))
+          (denote-dash-global-mode -1)
+          (should (eq denote-rename-buffer-function #'ignore))
+          (should (eq denote-link-description-format #'ignore)))
+      (denote-dash-global-mode -1)
+      (setq denote-rename-buffer-function orig-rename)
+      (setq denote-link-description-format orig-desc))))
+
+(ert-deftest denote-dash-test/global-mode-hierarchy-keymap ()
+  "Enabling `denote-dash-global-mode' sets hierarchy keys; disabling removes them."
+  (let ((denote-dash-global-mode nil))
+    (unwind-protect
+        (progn
+          (denote-dash-global-mode 1)
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "/") #'denote-dash-hierarchy-filter))
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "C-f") #'denote-dash-hierarchy-clear-filter))
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "T") #'denote-dash-hierarchy-toggle-show-tags))
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "a") #'denote-dash-hierarchy-actions-menu))
+          (denote-dash-global-mode -1)
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "/"))
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "C-f"))
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "T"))
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "a")))
+      (denote-dash-global-mode -1))))

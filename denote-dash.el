@@ -54,6 +54,7 @@
 (declare-function denote-markdown-convert-links-to-markdown-format "denote-markdown")
 (declare-function denote-markdown-convert-links-to-denote-format "denote-markdown")
 (declare-function denote-review-set-date "denote-review")
+(declare-function orgx-denote-capture-open-items "orgx-denote")
 (declare-function denote-review-display-list "denote-review")
 (declare-function denote-review-search-regexp-for-filetype "denote-review")
 (declare-function denote-review-check-date-of-file "denote-review")
@@ -678,6 +679,7 @@ in both ascending and descending order."
 (keymap-set denote-dash-mode-map "C-l" #'denote-tree-fix-all-sequence-frontmatter)
 (keymap-set denote-dash-mode-map "C-c C-r" #'denote-tree-repack-children)
 (keymap-set denote-dash-mode-map "v" #'denote-dash-schedule-review-at-point)
+(keymap-set denote-dash-mode-map "x" #'denote-dash-capture-open-items)
 (keymap-set denote-dash-mode-map "?" #'denote-dash-dispatch)
 (keymap-set denote-dash-mode-map "q" #'quit-window)
 (keymap-set denote-dash-mode-map "N" #'denote)
@@ -994,6 +996,18 @@ called is always that origin."
   "Set today's reviewdate on the note at point, without leaving denote-dash."
   (interactive)
   (denote-review-set-date))
+
+(defun denote-dash-capture-open-items ()
+  "Capture a linked heading for each note in this view that has open TODOs.
+Hands the files currently listed to `orgx-denote-capture-open-items',
+which prompts for TODO keywords and a target.  Requires orgx."
+  (interactive)
+  (unless (fboundp 'orgx-denote-capture-open-items)
+    (user-error "orgx is not available: cannot capture open items"))
+  (orgx-denote-capture-open-items
+   (seq-map #'car (if (functionp tabulated-list-entries)
+                      (funcall tabulated-list-entries)
+                    tabulated-list-entries))))
 
 ;;; Review list functionality
 

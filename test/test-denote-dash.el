@@ -1075,3 +1075,24 @@ exclusive major modes and can never be simultaneously reachable."
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "T"))
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "a")))
       (denote-dash-global-mode -1))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; denote-dash-capture-open-items
+
+(ert-deftest denote-dash-test/capture-open-items-passes-listed-files ()
+  "The command hands the files listed in the buffer to orgx."
+  (let (received)
+    (cl-letf (((symbol-function 'orgx-denote-capture-open-items)
+               (lambda (files) (setq received files))))
+      (with-temp-buffer
+        (setq-local tabulated-list-entries '(("/a.org" . [""]) ("/b.org" . [""])))
+        (denote-dash-capture-open-items)
+        (should (equal '("/a.org" "/b.org") received))
+        (setq-local tabulated-list-entries (lambda () '(("/c.org" . [""]))))
+        (denote-dash-capture-open-items)
+        (should (equal '("/c.org") received))))))
+
+(ert-deftest denote-dash-test/capture-open-items-requires-orgx ()
+  "Without orgx the command signals a user-error instead of silently doing nothing."
+  (cl-letf (((symbol-function 'fboundp) (lambda (sym) (not (eq sym 'orgx-denote-capture-open-items)))))
+    (should-error (denote-dash-capture-open-items) :type 'user-error)))

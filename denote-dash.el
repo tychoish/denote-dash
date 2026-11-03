@@ -1004,10 +1004,11 @@ which prompts for TODO keywords and a target.  Requires orgx."
   (interactive)
   (unless (fboundp 'orgx-denote-capture-open-items)
     (user-error "orgx is not available: cannot capture open items"))
-  (orgx-denote-capture-open-items
-   (seq-map #'car (if (functionp tabulated-list-entries)
-                      (funcall tabulated-list-entries)
-                    tabulated-list-entries))))
+  (if-let* ((files (seq-map #'car (if (functionp tabulated-list-entries)
+                                      (funcall tabulated-list-entries)
+                                    tabulated-list-entries))))
+      (orgx-denote-capture-open-items files)
+    (user-error "No notes in this view")))
 
 ;;; Review list functionality
 

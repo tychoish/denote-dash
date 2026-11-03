@@ -1094,5 +1094,12 @@ exclusive major modes and can never be simultaneously reachable."
 
 (ert-deftest denote-dash-test/capture-open-items-requires-orgx ()
   "Without orgx the command signals a user-error instead of silently doing nothing."
-  (cl-letf (((symbol-function 'fboundp) (lambda (sym) (not (eq sym 'orgx-denote-capture-open-items)))))
+  (cl-letf (((symbol-function 'orgx-denote-capture-open-items) nil))
     (should-error (denote-dash-capture-open-items) :type 'user-error)))
+
+(ert-deftest denote-dash-test/capture-open-items-empty-view ()
+  "An empty view is an error, not a fallback to every note."
+  (cl-letf (((symbol-function 'orgx-denote-capture-open-items) #'ignore))
+    (with-temp-buffer
+      (setq-local tabulated-list-entries nil)
+      (should-error (denote-dash-capture-open-items) :type 'user-error))))

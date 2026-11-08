@@ -2537,9 +2537,6 @@ Restored when `denote-dash-global-mode' is disabled.")
         (denote-dash-global--enable-advice)
         (denote-dash-global--enable-hierarchy-keys)
         (add-hook 'denote-sequence-hierarchy-mode-hook #'denote-dash-global--enable-hierarchy-keys)
-        (with-eval-after-load 'denote-sequence
-          (when denote-dash-global-mode
-            (denote-dash-global--enable-hierarchy-keys)))
         (when denote-dash-global-prefix
           (keymap-set denote-dash-global-mode-map denote-dash-global-prefix denote-dash-global-map))
         (when denote-dash--consult-timer

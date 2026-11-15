@@ -122,7 +122,7 @@ first file in `org-agenda-files'."
   :group 'denote-dash)
 
 (defcustom denote-dash-agenda-default-status "TODO"
-  "Default TODO status for agenda items created by `denote-dash-create-agenda-items'."
+  "Default TODO status for items created by `denote-dash-create-agenda-items'."
   :type 'string
   :group 'denote-dash)
 
@@ -1098,7 +1098,8 @@ KEYWORDS is an optional list of TODO keyword strings to look for."
     found))
 
 (defun denote-dash--agenda-todo-candidates (&optional files agenda-files keywords)
-  "Return candidate plists for notes in FILES with open TODOs not yet in AGENDA-FILES.
+  "Return candidate plists for notes in FILES not yet in AGENDA-FILES.
+Candidates must have open TODOs, matching KEYWORDS if specified.
 Each plist has keys :file, :id, :title, and :status."
   (let* ((candidates (or files (denote-directory-files)))
          (ag-files (or agenda-files (denote-dash--agenda-files)))

@@ -89,6 +89,8 @@
 (declare-function org-read-date "org")
 (declare-function org-up-heading-safe "org")
 (defvar org-heading-regexp)
+(defvar org-agenda-files)
+(defvar org-not-done-keywords)
 ;;; Declarations for optional extensions
 
 (declare-function denote-tree-lint-sequences "denote-tree")
@@ -110,6 +112,19 @@
 (defgroup denote-dash nil
   "Unified Denote dashboard and dispatch."
   :group 'denote)
+
+(defcustom denote-dash-agenda-target-file nil
+  "Default file where `denote-dash-create-agenda-items' inserts new agenda items.
+When nil, automatically resolved to `agentic.org' in `org-directory' or the
+first file in `org-agenda-files'."
+  :type '(choice (const :tag "Auto-detect" nil)
+                 (file :tag "Agenda file"))
+  :group 'denote-dash)
+
+(defcustom denote-dash-agenda-default-status "TODO"
+  "Default TODO status for agenda items created by `denote-dash-create-agenda-items'."
+  :type 'string
+  :group 'denote-dash)
 
 (defcustom denote-dash-filter-shortcuts
   '(("projects"  . (and "project" (not "archive")))
@@ -680,6 +695,7 @@ in both ascending and descending order."
 (keymap-set denote-dash-mode-map "C-c C-r" #'denote-tree-repack-children)
 (keymap-set denote-dash-mode-map "v" #'denote-dash-schedule-review-at-point)
 (keymap-set denote-dash-mode-map "x" #'denote-dash-capture-open-items)
+(keymap-set denote-dash-mode-map "A" #'denote-dash-create-agenda-items)
 (keymap-set denote-dash-mode-map "?" #'denote-dash-dispatch)
 (keymap-set denote-dash-mode-map "q" #'quit-window)
 (keymap-set denote-dash-mode-map "N" #'denote)
@@ -1009,6 +1025,226 @@ which prompts for TODO keywords and a target.  Requires orgx."
                                     tabulated-list-entries))))
       (orgx-denote-capture-open-items files)
     (user-error "No notes in this view")))
+
+;;; Agenda items workflow for denote notes with TODOs
+
+(defun denote-dash--file-id (file)
+  "Return the denote identifier of FILE."
+  (or (denote-retrieve-filename-identifier file)
+      (let ((base (file-name-nondirectory file)))
+        (when (string-match "\\`\\([0-9]\\{8\\}T[0-9]\\{6\\}\\)" base)
+          (match-string 1 base)))))
+
+(defun denote-dash--file-title (file)
+  "Return a cleaned title of FILE for an org link description."
+  (let ((raw (or (ignore-errors
+                   (denote-retrieve-title-or-filename file (denote-filetype-heuristics file)))
+                 (file-name-base file))))
+    (thread-last
+      raw
+      (replace-regexp-in-string "[][]" "")
+      (string-trim))))
+
+(defun denote-dash--note-todo-status (file &optional keywords)
+  "Return the first open TODO keyword found in denote note FILE, or nil.
+KEYWORDS is an optional list of TODO keyword strings to look for."
+  (when (and file (string-suffix-p ".org" file) (file-readable-p file))
+    (let* ((kws (or keywords
+                    (and (boundp 'org-not-done-keywords) org-not-done-keywords)
+                    '("TODO" "INPROGRESS" "WAIT" "HOLD")))
+           (re (format "^\\*+[ \t]+%s[ \t]" (regexp-opt kws t))))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (when (re-search-forward re nil t)
+          (match-string-no-properties 1))))))
+
+(defun denote-dash--agenda-files ()
+  "Return the list of active org agenda files."
+  (let ((raw (cond
+              ((and (fboundp 'org-agenda-files) (ignore-errors (org-agenda-files)))
+               (org-agenda-files))
+              ((boundp 'org-agenda-files)
+               org-agenda-files)
+              ((boundp 'org-directory)
+               (let ((agentic (expand-file-name "agentic.org" org-directory)))
+                 (when (file-exists-p agentic)
+                   (list agentic))))
+              (t nil))))
+    (seq-filter #'file-exists-p
+                (seq-mapcat
+                 (lambda (entry)
+                   (cond
+                    ((file-directory-p entry)
+                     (directory-files entry t "\\.org\\'"))
+                    ((file-regular-p entry)
+                     (list (expand-file-name entry)))
+                    (t nil)))
+                 (if (listp raw) raw (list raw))))))
+
+(defun denote-dash--agenda-has-link-p (id &optional agenda-files)
+  "Return non-nil if ID is already linked from any file in AGENDA-FILES."
+  (let ((files (or agenda-files (denote-dash--agenda-files)))
+        (re (format "\\[\\[denote:%s\\(?:[]\\[=]\\)" (regexp-quote id)))
+        found)
+    (while (and files (not found))
+      (let ((file (pop files)))
+        (when (and (file-readable-p file) (file-regular-p file))
+          (with-temp-buffer
+            (insert-file-contents file)
+            (goto-char (point-min))
+            (when (re-search-forward re nil t)
+              (setq found file))))))
+    found))
+
+(defun denote-dash--agenda-todo-candidates (&optional files agenda-files keywords)
+  "Return candidate plists for notes in FILES with open TODOs not yet in AGENDA-FILES.
+Each plist has keys :file, :id, :title, and :status."
+  (let* ((candidates (or files (denote-directory-files)))
+         (ag-files (or agenda-files (denote-dash--agenda-files)))
+         items)
+    (dolist (file candidates (nreverse items))
+      (when-let* ((id (denote-dash--file-id file))
+                  (status (denote-dash--note-todo-status file keywords)))
+        (unless (denote-dash--agenda-has-link-p id ag-files)
+          (push (list :file file
+                      :id id
+                      :title (denote-dash--file-title file)
+                      :status (or status denote-dash-agenda-default-status))
+                items))))))
+
+(defun denote-dash--format-agenda-item (status id title &optional level)
+  "Format an org agenda heading with STATUS and a denote link to ID and TITLE.
+LEVEL is the outline heading depth (default 1)."
+  (let ((stars (make-string (max 1 (or level 1)) ?*))
+        (clean-title (replace-regexp-in-string "[][]" "" (or title id))))
+    (format "%s %s [[denote:%s][%s]]"
+            stars
+            (or status denote-dash-agenda-default-status "TODO")
+            id
+            clean-title)))
+
+(defun denote-dash--resolve-agenda-target-file ()
+  "Determine the target agenda file for inserting new items."
+  (or denote-dash-agenda-target-file
+      (let* ((files (denote-dash--agenda-files))
+             (agentic (seq-find (lambda (f) (string-equal (file-name-nondirectory f) "agentic.org")) files)))
+        (or agentic
+            (car files)
+            (and (boundp 'org-directory) (expand-file-name "agentic.org" org-directory))
+            (read-file-name "Agenda target file: " nil nil t)))))
+
+(defun denote-dash--insert-agenda-items (items target-file &optional target-heading)
+  "Insert agenda ITEMS into TARGET-FILE under TARGET-HEADING.
+ITEMS is a list of plists as returned by `denote-dash--agenda-todo-candidates'.
+Returns the number of items inserted."
+  (unless items
+    (user-error "No items to insert"))
+  (let ((count 0)
+        (expanded (expand-file-name target-file)))
+    (unless (file-writable-p (file-name-directory expanded))
+      (user-error "Directory for target file `%s' is not writable" expanded))
+    (with-current-buffer (find-file-noselect expanded)
+      (save-excursion
+        (save-restriction
+          (widen)
+          (let ((level 1)
+                insert-pos)
+            (cond
+             (target-heading
+              (goto-char (point-min))
+              (if (re-search-forward (format "^\\(\\*+\\)[ \t]+%s[ \t]*$" (regexp-quote target-heading)) nil t)
+                  (progn
+                    (setq level (1+ (length (match-string 1))))
+                    (org-end-of-subtree t t)
+                    (setq insert-pos (point)))
+                (goto-char (point-max))
+                (unless (bolp) (insert "\n"))
+                (insert (format "* %s\n" target-heading))
+                (setq level 2)
+                (setq insert-pos (point))))
+             ((progn
+                (goto-char (point-min))
+                (re-search-forward "^\\(\\*+\\)[ \t]+Tasks[ \t]*$" nil t))
+              (setq level (1+ (length (match-string 1))))
+              (org-end-of-subtree t t)
+              (setq insert-pos (point)))
+             (t
+              (goto-char (point-max))
+              (setq insert-pos (point))))
+            (goto-char insert-pos)
+            (unless (bolp) (insert "\n"))
+            (dolist (item items)
+              (let ((entry (denote-dash--format-agenda-item
+                            (plist-get item :status)
+                            (plist-get item :id)
+                            (plist-get item :title)
+                            level)))
+                (insert entry "\n")
+                (setq count (1+ count)))))))
+      (save-buffer))
+    count))
+
+;;;###autoload
+(defun denote-dash-create-agenda-items (&optional arg)
+  "Create an org agenda item for every denote note with an open TODO.
+Validates that each note does not already have an agenda item linking to it.
+Links consist only of the TODO status and a link to the denote note.
+
+When called in `denote-dash-mode', scans notes currently listed in the view;
+otherwise scans all notes in `denote-directory'.
+With prefix ARG, prompts for the target agenda file and target heading."
+  (interactive "P")
+  (let* ((files (if (derived-mode-p 'denote-dash-mode)
+                    (if-let* ((view-files (seq-map #'car (if (functionp tabulated-list-entries)
+                                                             (funcall tabulated-list-entries)
+                                                           tabulated-list-entries))))
+                        view-files
+                      (user-error "No notes in current view"))
+                  (denote-directory-files)))
+         (agenda-files (denote-dash--agenda-files))
+         (candidates (denote-dash--agenda-todo-candidates files agenda-files)))
+    (if (null candidates)
+        (message "All denote notes with TODOs already have agenda items.")
+      (let* ((target-file (if arg
+                              (read-file-name "Target agenda file: " nil nil t (car agenda-files))
+                            (denote-dash--resolve-agenda-target-file)))
+             (target-heading (when arg
+                               (let ((h (read-string "Target heading (optional, empty for top/Tasks): ")))
+                                 (unless (string-empty-p h) h))))
+             (selected
+              (if (or noninteractive (<= (length candidates) 1))
+                  candidates
+                (let* ((prompt (format "Found %d denote note(s) with TODOs. Create agenda items? "
+                                       (length candidates)))
+                       (choice (completing-read
+                                prompt
+                                '("all" "choose" "cancel")
+                                nil t nil nil "all")))
+                  (pcase choice
+                    ("all" candidates)
+                    ("cancel" (user-error "Aborted"))
+                    ("choose"
+                     (let* ((items-by-name
+                             (mapcar (lambda (c)
+                                       (cons (format "[%s] %s (%s)"
+                                                     (plist-get c :status)
+                                                     (plist-get c :title)
+                                                     (plist-get c :id))
+                                             c))
+                                     candidates))
+                            (chosen (completing-read-multiple
+                                     "Select notes to create agenda items for: "
+                                     (mapcar #'car items-by-name)
+                                     nil t)))
+                       (unless chosen
+                         (user-error "No notes selected"))
+                       (mapcar (lambda (k) (cdr (assoc k items-by-name))) chosen)))
+                    (_ (user-error "Aborted"))))))
+             (count (denote-dash--insert-agenda-items selected target-file target-heading)))
+        (message "Created %d agenda item(s) in %s" count (file-name-nondirectory target-file))))))
+
+(defalias 'denote-dash-create-agenda-todos #'denote-dash-create-agenda-items)
 
 ;;; Review list functionality
 
@@ -2178,7 +2414,8 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("si" "insert at seq"      denote-tree-insert-sequence-note
      :if denote-dash--denote-tree-available-p)
     ("id" "from org datetree"  denote-convert-import-from-datetree
-     :if denote-dash--denote-convert-available-p)]
+     :if denote-dash--denote-convert-available-p)
+    ("ta" "agenda TODOs"       denote-dash-create-agenda-items)]
    ["Rename"
     ("rr" "rename file"        denote-dash-rename-file)
     ("rf" "rename from fm"     denote-dash-rename-file-using-front-matter)

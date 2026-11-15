@@ -1103,3 +1103,78 @@ exclusive major modes and can never be simultaneously reachable."
     (with-temp-buffer
       (setq-local tabulated-list-entries nil)
       (should-error (denote-dash-capture-open-items) :type 'user-error))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; denote-dash-create-agenda-items (workflow for notes with TODOs)
+
+(ert-deftest denote-dash-test/agenda-todo-status ()
+  "Detects open TODO status keywords in org notes."
+  (let* ((dir (make-temp-file "denote-dash-test" t))
+         (f-todo (expand-file-name "20261114T100000--note-a.org" dir))
+         (f-prog (expand-file-name "20261114T110000--note-b.org" dir))
+         (f-clean (expand-file-name "20261114T120000--note-c.org" dir)))
+    (unwind-protect
+        (progn
+          (with-temp-file f-todo
+            (insert "#+title: Note A\n\n* Overview\n** TODO First task\n"))
+          (with-temp-file f-prog
+            (insert "#+title: Note B\n\n* INPROGRESS In flight\n"))
+          (with-temp-file f-clean
+            (insert "#+title: Note C\n\n* DONE All done\n* Notes\nJust text\n"))
+          (should (equal "TODO" (denote-dash--note-todo-status f-todo)))
+          (should (equal "INPROGRESS" (denote-dash--note-todo-status f-prog)))
+          (should-not (denote-dash--note-todo-status f-clean)))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/agenda-has-link-validation ()
+  "Validates whether an agenda file already links to a denote note ID."
+  (let* ((dir (make-temp-file "denote-dash-test" t))
+         (agenda-f (expand-file-name "agentic.org" dir)))
+    (unwind-protect
+        (progn
+          (with-temp-file agenda-f
+            (insert "* Tasks\n** TODO [[denote:20261114T065209][Existing Design [7a6f]​]]\n"))
+          (should (denote-dash--agenda-has-link-p "20261114T065209" (list agenda-f)))
+          (should-not (denote-dash--agenda-has-link-p "20261114T999999" (list agenda-f))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/format-agenda-item ()
+  "Headings consist only of status and the denote orglink."
+  (should (equal "* TODO [[denote:20261114T065209][Design Note]]"
+                 (denote-dash--format-agenda-item "TODO" "20261114T065209" "Design Note" 1)))
+  (should (equal "** INPROGRESS [[denote:20261114T070644][Diff Analysis]]"
+                 (denote-dash--format-agenda-item "INPROGRESS" "20261114T070644" "Diff [Analysis]" 2))))
+
+(ert-deftest denote-dash-test/create-agenda-items-batch ()
+  "Filters out existing links and creates agenda items for unlinked notes with TODOs."
+  (let* ((dir (make-temp-file "denote-dash-test" t))
+         (note-exist (expand-file-name "20261114T010000--exist.org" dir))
+         (note-new (expand-file-name "20261114T020000--new-task.org" dir))
+         (note-no-todo (expand-file-name "20261114T030000--plain.org" dir))
+         (agenda-file (expand-file-name "agentic.org" dir)))
+    (unwind-protect
+        (progn
+          (with-temp-file note-exist
+            (insert "#+title: Existing Task\n* TODO Work on this\n"))
+          (with-temp-file note-new
+            (insert "#+title: Brand New Note\n* TODO Implement feature\n"))
+          (with-temp-file note-no-todo
+            (insert "#+title: No Todo Note\n* Just text\n"))
+          (with-temp-file agenda-file
+            (insert "* Tasks\n** TODO [[denote:20261114T010000][Existing Task]]\n"))
+          (let* ((agenda-files (list agenda-file))
+                 (candidates (denote-dash--agenda-todo-candidates
+                              (list note-exist note-new note-no-todo)
+                              agenda-files)))
+            (should (= 1 (length candidates)))
+            (should (equal "20261114T020000" (plist-get (car candidates) :id)))
+            (should (equal "Brand New Note" (plist-get (car candidates) :title)))
+            ;; Run insertion
+            (let ((count (denote-dash--insert-agenda-items candidates agenda-file)))
+              (should (= 1 count))
+              (with-temp-buffer
+                (insert-file-contents agenda-file)
+                (should (string-match-p
+                         "\\*\\* TODO \\[\\[denote:20261114T020000\\]\\[Brand New Note\\]\\]"
+                         (buffer-string)))))))
+      (delete-directory dir t))))

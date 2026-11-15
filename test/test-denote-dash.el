@@ -833,7 +833,7 @@ exclusive major modes and can never be simultaneously reachable."
           (setq buf (find-file-noselect file))
           (with-current-buffer buf
             (denote-dash-rename-buffer)
-            (should (equal (buffer-name) "[d:1a] hello-world")))
+            (should (equal (buffer-name) "[d:1a] Hello World")))
           (kill-buffer buf))
       (delete-directory dir t))))
 
@@ -848,8 +848,37 @@ exclusive major modes and can never be simultaneously reachable."
           (setq buf (find-file-noselect file))
           (with-current-buffer buf
             (denote-dash-rename-buffer)
-            (should (equal (buffer-name) "plain-note")))
+            (should (equal (buffer-name) "Plain Note")))
           (kill-buffer buf))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/rename-buffer-fallback-to-filename ()
+  "Buffer visiting a note without front-matter title falls back to filename title."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T120000--fallback-note.org" dir))
+               buf)
+          (with-temp-file file
+            (insert "#+identifier: 20240101T120000\n"))
+          (setq buf (find-file-noselect file))
+          (with-current-buffer buf
+            (denote-dash-rename-buffer)
+            (should (equal (buffer-name) "fallback-note")))
+          (kill-buffer buf))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/note-label-prefix ()
+  "Note label in completion formats sequence as `[d:SEQ] TITLE` with lowercase d."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let ((seq-file (expand-file-name "20240101T120000==1a--seq-note.org" dir))
+              (plain-file (expand-file-name "20240101T130000--plain-note.org" dir)))
+          (with-temp-file seq-file
+            (insert "#+title: Seq Note\n#+identifier: 20240101T120000\n#+signature: 1a\n"))
+          (with-temp-file plain-file
+            (insert "#+title: Plain Note\n#+identifier: 20240101T130000\n"))
+          (should (equal (denote-dash--note-label seq-file) "[d:1a] Seq Note"))
+          (should (equal (denote-dash--note-label plain-file) "Plain Note")))
       (delete-directory dir t))))
 
 (ert-deftest denote-dash-test/link-description-format ()
@@ -1074,6 +1103,24 @@ exclusive major modes and can never be simultaneously reachable."
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "C-f"))
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "T"))
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "a")))
+      (denote-dash-global-mode -1))))
+
+(ert-deftest denote-dash-test/global-mode-advice-lifecycle ()
+  "Enabling `denote-dash-global-mode' adds advice; disabling removes it."
+  (let ((denote-dash-global-mode nil))
+    (unwind-protect
+        (progn
+          (denote-dash-global-mode 1)
+          (should (advice-member-p #'ad:denote-dash--link-ol-get-heading-org-only 'denote-link-ol-get-heading))
+          (with-temp-buffer
+            ;; In non-org buffer, returns nil
+            (should-not (ad:denote-dash--link-ol-get-heading-org-only (lambda () "Heading"))))
+          (with-temp-buffer
+            (org-mode)
+            ;; In org-mode buffer, delegates to inner function
+            (should (equal "Heading" (ad:denote-dash--link-ol-get-heading-org-only (lambda () "Heading")))))
+          (denote-dash-global-mode -1)
+          (should-not (advice-member-p #'ad:denote-dash--link-ol-get-heading-org-only 'denote-link-ol-get-heading)))
       (denote-dash-global-mode -1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

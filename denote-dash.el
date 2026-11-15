@@ -2113,8 +2113,10 @@ notes only, since sequence operations require one."
 Suitable as a value for `denote-rename-buffer-function'."
   (when-let* ((file (buffer-file-name buffer))
               ((denote-file-has-identifier-p file)))
-    (let* ((sig   (denote-retrieve-filename-signature file))
-           (title (or (denote-retrieve-filename-title file)
+    (let* ((type  (denote-filetype-heuristics file))
+           (sig   (denote-retrieve-filename-signature file))
+           (title (or (denote-retrieve-title-or-filename file type)
+                      (denote-retrieve-filename-title file)
                       (file-name-base file)))
            (name  (if (and sig (not (string-empty-p sig)))
                       (format "[d:%s] %s" sig title)
@@ -2141,23 +2143,31 @@ Suitable as a value for `denote-link-description-format'."
       (format "[%s]" signature))
      (t ""))))
 
+(defun ad:denote-dash--link-ol-get-heading-org-only (fn &rest args)
+  "Only call FN in `org-mode' buffers.
+`denote-link-ol-store' calls `denote-link-ol-get-heading' unconditionally
+even when visiting non-Org Denote files (e.g. Markdown), which causes
+`org-get-heading' to fail with an `rx' range error outside Org buffers."
+  (when (derived-mode-p 'org-mode)
+    (apply fn args)))
+
 ;;; Annotated note selection
 ;;
 ;; The standard way to ask the user "which Denote note?" when the context
 ;; (buffer, Dired, denote-dash row, hierarchy row) doesn't already make it
 ;; obvious.  Candidates are labeled the way the note's buffer would be named
-;; by `denote-dash-rename-buffer' (`[D:SIGNATURE] TITLE') and annotated
+;; by `denote-dash-rename-buffer' (`[d:SIGNATURE] TITLE') and annotated
 ;; with keywords and last-modified date, and default to the file implied by
 ;; `denote-dash--file-at-point' so the obvious note can be accepted with RET.
 
 (defun denote-dash--note-label (file)
-  "Return the `[D:SIGNATURE] TITLE' label FILE's buffer would be named.
+  "Return the `[d:SIGNATURE] TITLE' label FILE's buffer would be named.
 Mirrors `denote-dash-rename-buffer' so a candidate reads the same as
 the buffer name a user would see after visiting FILE."
   (if-let* ((title (denote-retrieve-title-or-filename file (denote-filetype-heuristics file)))
             (sig (denote-retrieve-filename-signature file))
             ((not (string-empty-p sig))))
-      (format "[D:%s] %s" sig title)
+      (format "[d:%s] %s" sig title)
     title))
 
 (defun denote-dash--note-annotation (file)
@@ -2731,7 +2741,8 @@ Restored when `denote-dash-global-mode' is disabled.")
   (advice-add 'denote-sequence--hierarchy-insert :around #'ad:denote-dash--hierarchy-insert)
   (advice-add 'denote-sequence-hierarchy-find-file :around #'ad:denote-dash--hierarchy-track-origin)
   (advice-add 'denote-review-set-date :around #'ad:denote-dash--review-set-date-target-file)
-  (advice-add 'denote-review-display-list :around #'ad:denote-dash--review-display-list))
+  (advice-add 'denote-review-display-list :around #'ad:denote-dash--review-display-list)
+  (advice-add 'denote-link-ol-get-heading :around #'ad:denote-dash--link-ol-get-heading-org-only))
 
 (defun denote-dash-global--disable-advice ()
   "Disable advice managed by `denote-dash-global-mode'."
@@ -2739,7 +2750,8 @@ Restored when `denote-dash-global-mode' is disabled.")
   (advice-remove 'denote-sequence--hierarchy-insert #'ad:denote-dash--hierarchy-insert)
   (advice-remove 'denote-sequence-hierarchy-find-file #'ad:denote-dash--hierarchy-track-origin)
   (advice-remove 'denote-review-set-date #'ad:denote-dash--review-set-date-target-file)
-  (advice-remove 'denote-review-display-list #'ad:denote-dash--review-display-list))
+  (advice-remove 'denote-review-display-list #'ad:denote-dash--review-display-list)
+  (advice-remove 'denote-link-ol-get-heading #'ad:denote-dash--link-ol-get-heading-org-only))
 
 (defun denote-dash-global--enable-hierarchy-keys ()
   "Bind denote-dash keys in `denote-sequence-hierarchy-mode-map'."

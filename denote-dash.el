@@ -1909,7 +1909,9 @@ named `*denote-dash: NAME*'."
 (defun denote-dash--register-savehist-variables ()
   "Add denote-dash's persisted variables to `savehist-additional-variables'."
   (seq-do (lambda (var) (add-to-list 'savehist-additional-variables var))
-          '(denote-dash--filter-history
+          '(denote--title-history
+            denote--keywords-history
+            denote-dash--filter-history
             denote-dash--persisted-columns
             denote-dash-saved-views)))
 
@@ -2783,6 +2785,7 @@ Restored when `denote-dash-global-mode' is disabled.")
   :keymap denote-dash-global-mode-map
   (if denote-dash-global-mode
       (progn
+        (denote-dash--register-savehist-variables)
         (denote-dash-global--apply-settings)
         (denote-dash-global--enable-advice)
         (denote-dash-global--enable-hierarchy-keys)

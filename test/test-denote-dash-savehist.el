@@ -15,8 +15,10 @@
 
 (ert-deftest denote-dash/subtree-extraction-uses-denote-convert ()
   (denote-dash--setup-transients)
-  (should (memq 'denote-convert-subtree
-                (transient-get-suffix 'denote-dash-dispatch "or"))))
+  (let ((suffix (transient-get-suffix 'denote-dash-dispatch "or")))
+    (should suffix)
+    (should (equal suffix (transient-get-suffix 'denote-dash-dispatch
+                                                'denote-convert-subtree)))))
 
 (provide 'test-denote-dash-savehist)
 ;;; test-denote-dash-savehist.el ends here

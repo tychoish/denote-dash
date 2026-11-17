@@ -15,8 +15,8 @@
 
 (ert-deftest denote-dash/subtree-extraction-uses-denote-convert ()
   (denote-dash--setup-transients)
-  (should (eq (plist-get (cdr (transient-get-suffix 'denote-dash-dispatch "or")) :command)
-              'denote-convert-subtree)))
+  (should (memq 'denote-convert-subtree
+                (transient-get-suffix 'denote-dash-dispatch "or"))))
 
 (provide 'test-denote-dash-savehist)
 ;;; test-denote-dash-savehist.el ends here

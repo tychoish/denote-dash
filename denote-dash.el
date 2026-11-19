@@ -2711,7 +2711,8 @@ Also updates `denote-dash-global-map' to bind the active commands."
 (defcustom denote-dash-global-managed-settings
   '((denote-rename-buffer-function . denote-dash-rename-buffer)
     (denote-link-description-format . denote-dash-link-description-format))
-  "Alist of (SYMBOL . VALUE) settings managed globally by `denote-dash-global-mode'."
+  "Alist of (SYMBOL . VALUE) settings managed globally.
+Applied when `denote-dash-global-mode' is enabled."
   :type '(alist :key-type symbol :value-type sexp)
   :group 'denote-dash)
 

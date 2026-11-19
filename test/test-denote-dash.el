@@ -1073,20 +1073,25 @@ exclusive major modes and can never be simultaneously reachable."
   "Enabling `denote-dash-global-mode' applies managed settings; disabling reverts them."
   (let ((denote-dash-global-mode nil)
         (orig-rename (when (boundp 'denote-rename-buffer-function) denote-rename-buffer-function))
-        (orig-desc (when (boundp 'denote-link-description-format) denote-link-description-format)))
+        (orig-desc (when (boundp 'denote-link-description-format) denote-link-description-format))
+        (orig-save (when (boundp 'denote-save-buffers) denote-save-buffers)))
     (unwind-protect
         (progn
           (setq denote-rename-buffer-function #'ignore)
           (setq denote-link-description-format #'ignore)
+          (setq denote-save-buffers nil)
           (denote-dash-global-mode 1)
           (should (eq denote-rename-buffer-function #'denote-dash-rename-buffer))
           (should (eq denote-link-description-format #'denote-dash-link-description-format))
+          (should (eq denote-save-buffers t))
           (denote-dash-global-mode -1)
           (should (eq denote-rename-buffer-function #'ignore))
-          (should (eq denote-link-description-format #'ignore)))
+          (should (eq denote-link-description-format #'ignore))
+          (should (eq denote-save-buffers nil)))
       (denote-dash-global-mode -1)
       (setq denote-rename-buffer-function orig-rename)
-      (setq denote-link-description-format orig-desc))))
+      (setq denote-link-description-format orig-desc)
+      (setq denote-save-buffers orig-save))))
 
 (ert-deftest denote-dash-test/global-mode-hierarchy-keymap ()
   "Enabling `denote-dash-global-mode' sets hierarchy keys; disabling removes them."

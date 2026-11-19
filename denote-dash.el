@@ -2709,8 +2709,8 @@ Also updates `denote-dash-global-map' to bind the active commands."
   :group 'denote-dash)
 
 (defvar denote-dash-global--managed-settings
-  `((denote-rename-buffer-function . ,#'denote-dash-rename-buffer)
-    (denote-link-description-format . ,#'denote-dash-link-description-format))
+  '((denote-rename-buffer-function . denote-dash-rename-buffer)
+    (denote-link-description-format . denote-dash-link-description-format))
   "Alist of (SYMBOL . VALUE) settings managed globally.
 Used by `denote-dash-global-mode'.")
 

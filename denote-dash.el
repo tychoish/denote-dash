@@ -640,7 +640,8 @@ in both ascending and descending order."
     (setq denote-dash--git-cache (denote-dash--build-git-cache)))
   (denote-dash--setup-columns)
   (setq tabulated-list-entries (denote-dash--compute-entries))
-  (tabulated-list-print t))
+  (tabulated-list-print t)
+  (denote-dash--sync-buffer-name))
 
 ;;; Mode definition
 
@@ -989,6 +990,100 @@ note, so a hierarchy view scoped to a sequence reports \"No sequences
 found\".  `denote-sequence-split' already reads either scheme."
   (let ((components (denote-sequence-split sequence)))
     (equal prefix (seq-take components (length prefix)))))
+
+;;; Series and buffer naming
+
+(defun denote-dash--series-label (seq)
+  "Return \"SEQ Title\" for sequence SEQ, or just SEQ without a titled note."
+  (if-let* ((file (denote-sequence-get-path seq))
+            (title (denote-retrieve-title-or-filename file (denote-filetype-heuristics file)))
+            ((not (string-blank-p title))))
+      (format "%s %s" seq title)
+    seq))
+
+(defun denote-dash--sequences-label (seqs)
+  "Return a short label for the sequence list SEQS, or nil when empty."
+  (when seqs
+    (concat (denote-dash--series-label (car seqs))
+            (when (cdr seqs)
+              (format " +%d" (length (cdr seqs)))))))
+
+(defun denote-dash--hierarchy-buffer-name (prefix depth)
+  "Return the name of the hierarchy buffer scoped to PREFIX and DEPTH.
+Names what the view holds: the series (sequence and note title) when PREFIX
+is set, \"all\" otherwise, with the depth limit when given."
+  (format "*denote-hierarchy: %s%s*"
+          (if (and prefix (not (string-blank-p prefix)))
+              (denote-dash--series-label prefix)
+            "all")
+          (if depth (format " (depth %s)" depth) "")))
+
+(defun ad:denote-dash--hierarchy-get-buffer (prefix depth)
+  "Return the hierarchy buffer for PREFIX and DEPTH, named for its contents.
+Replaces `denote-sequence--hierarchy-get-buffer', which names the buffer
+after the raw arguments."
+  (let ((buffer (get-buffer-create (denote-dash--hierarchy-buffer-name prefix depth)))
+        (inhibit-read-only t))
+    (with-current-buffer buffer
+      (erase-buffer)
+      (setq-local revert-buffer-function
+                  (lambda (_ignore-auto _no-confirm)
+                    (denote-sequence-view-hierarchy prefix depth))))
+    buffer))
+
+(defun denote-dash--buffer-name ()
+  "Return the buffer name for the current `denote-dash-mode' state.
+Saved views keep their view name; narrowed buffers are named for the
+series they show; everything else is the plain \"*denote-dash*\"."
+  (cond
+   (denote-dash--last-bookmark-name
+    (denote-dash--view-buffer-name denote-dash--last-bookmark-name))
+   (denote-dash--narrowed-sequences
+    (format "*denote-dash: %s*" (denote-dash--sequences-label denote-dash--narrowed-sequences)))
+   (t "*denote-dash*")))
+
+(defun denote-dash--sync-buffer-name ()
+  "Rename the current `denote-dash-mode' buffer to match what it shows."
+  (let ((name (denote-dash--buffer-name)))
+    (unless (equal name (buffer-name))
+      (rename-buffer name :unique))))
+
+;;; Open a dash for a series
+
+(defun denote-dash--series-default ()
+  "Return the sequence of the note at point or visited, or nil."
+  (when-let* ((file (denote-dash--file-at-point)))
+    (denote-retrieve-filename-signature file)))
+
+(defun denote-dash--series-prompt ()
+  "Read a sequence id, annotated with note titles; default to the one at point."
+  (let ((default (denote-dash--series-default)))
+    (annotated-completing-read
+     (seq-map (lambda (seq)
+                (cons seq (when-let* ((file (denote-sequence-get-path seq)))
+                            (denote-retrieve-title-or-filename
+                             file (denote-filetype-heuristics file)))))
+              (denote-sequence-get-all-sequences))
+     :prompt (if default
+                 (format "Series (default %s): " default)
+               "Series: ")
+     :default default
+     :require-match t)))
+
+;;;###autoload
+(defun denote-dash-open-series (seq)
+  "Open a dash buffer narrowed to the series SEQ and its descendants.
+Interactively, prompt for SEQ, defaulting to the series of the note at
+point.  The buffer is named for the series and reused when it exists."
+  (interactive (list (denote-dash--series-prompt)))
+  (unless (denote-sequence-p seq)
+    (user-error "Not a sequence id: %s" seq))
+  (let ((buf (get-buffer-create (format "*denote-dash: %s*" (denote-dash--series-label seq)))))
+    (pop-to-buffer buf)
+    (unless (derived-mode-p 'denote-dash-mode)
+      (denote-dash-mode))
+    (setq denote-dash--narrowed-sequences (list seq))
+    (denote-dash-refresh)))
 
 ;;; Navigation
 
@@ -2477,6 +2572,7 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("vo" "open view buffer"   denote-dash-open-view)
     ("vh" "sequence hierarchy" denote-sequence-view-hierarchy
      :inapt-if-derived denote-sequence-hierarchy-mode)
+    ("vs" "dash for series"    denote-dash-open-series)
     ("vf" "dired"              denote-dired)
     ("vc" "close all notes"    denote-dash-close-all-notes)
     ("vk" "save+kill all notes" denote-dash-save-and-kill-all-notes)]
@@ -2594,7 +2690,8 @@ Ignores any hook arguments."
 (defvar-keymap denote-dash-hierarchy-map
   :doc "Keymap for Denote sequence hierarchy commands."
   "v" #'denote-dash-hierarchy-switch-or-view
-  "t" #'denote-dash-hierarchy-view-by-note)
+  "t" #'denote-dash-hierarchy-view-by-note
+  "s" #'denote-dash-open-series)
 
 (defvar denote-dash-global-map)
 
@@ -2758,6 +2855,7 @@ Restored when `denote-dash-global-mode' is disabled.")
   (advice-add 'denote-sequence--format-hierarchy-entry :around #'ad:denote-dash--hierarchy-format-entry)
   (advice-add 'denote-sequence--hierarchy-insert :around #'ad:denote-dash--hierarchy-insert)
   (advice-add 'denote-sequence--sequence-prefix-p :override #'ad:denote-dash--sequence-prefix-p)
+  (advice-add 'denote-sequence--hierarchy-get-buffer :override #'ad:denote-dash--hierarchy-get-buffer)
   (advice-add 'denote-sequence-hierarchy-find-file :around #'ad:denote-dash--hierarchy-track-origin)
   (advice-add 'denote-review-set-date :around #'ad:denote-dash--review-set-date-target-file)
   (advice-add 'denote-review-display-list :around #'ad:denote-dash--review-display-list)
@@ -2768,6 +2866,7 @@ Restored when `denote-dash-global-mode' is disabled.")
   (advice-remove 'denote-sequence--format-hierarchy-entry #'ad:denote-dash--hierarchy-format-entry)
   (advice-remove 'denote-sequence--hierarchy-insert #'ad:denote-dash--hierarchy-insert)
   (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)
+  (advice-remove 'denote-sequence--hierarchy-get-buffer #'ad:denote-dash--hierarchy-get-buffer)
   (advice-remove 'denote-sequence-hierarchy-find-file #'ad:denote-dash--hierarchy-track-origin)
   (advice-remove 'denote-review-set-date #'ad:denote-dash--review-set-date-target-file)
   (advice-remove 'denote-review-display-list #'ad:denote-dash--review-display-list)

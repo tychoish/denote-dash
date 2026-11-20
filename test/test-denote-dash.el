@@ -1284,3 +1284,43 @@ exclusive major modes and can never be simultaneously reachable."
           (let ((denote-dash-hierarchy--tag-filter "missing"))
             (should-not (denote-dash--hierarchy-file-matches-filter-p file))))
       (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/hierarchy-buffer-name-uses-series-title ()
+  "The hierarchy buffer is named for the series it shows."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let ((denote-directory (list dir)))
+          (denote-dash-test--make-seq-note dir "20240101T100000" "7a11" "Root Note")
+          (should (equal "*denote-hierarchy: 7a11 Root Note*"
+                         (denote-dash--hierarchy-buffer-name "7a11" nil)))
+          (should (equal "*denote-hierarchy: 7a11 Root Note (depth 2)*"
+                         (denote-dash--hierarchy-buffer-name "7a11" 2)))
+          (should (equal "*denote-hierarchy: all*" (denote-dash--hierarchy-buffer-name nil nil)))
+          (should (equal "*denote-hierarchy: all*" (denote-dash--hierarchy-buffer-name "" nil)))
+          (should (equal "*denote-hierarchy: 9z*" (denote-dash--hierarchy-buffer-name "9z" nil))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/open-series-narrows-and-names-buffer ()
+  "`denote-dash-open-series' narrows to the series in a series-named buffer."
+  (let ((dir (make-temp-file "denote-dash-test-" t))
+        (denote-dash-title-source 'filename))
+    (unwind-protect
+        (let ((denote-directory (list dir)))
+          (denote-dash-test--make-seq-note dir "20240101T100000" "1" "Alpha")
+          (denote-dash-test--make-seq-note dir "20240101T100100" "1a" "Alpha child")
+          (denote-dash-test--make-seq-note dir "20240101T100200" "2" "Beta")
+          (cl-letf (((symbol-function 'pop-to-buffer) (lambda (b &rest _) (set-buffer b))))
+            (denote-dash-open-series "1"))
+          (unwind-protect
+              (with-current-buffer "*denote-dash: 1 Alpha*"
+                (should (derived-mode-p 'denote-dash-mode))
+                (should (equal '("1") denote-dash--narrowed-sequences))
+                (should (= 2 (length tabulated-list-entries)))
+                (denote-dash-widen)
+                (should (equal "*denote-dash*" (buffer-name))))
+            (kill-buffer (get-buffer "*denote-dash*"))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/open-series-rejects-non-sequence ()
+  "A string that is not a sequence id is a user error."
+  (should-error (denote-dash-open-series "not a sequence") :type 'user-error))

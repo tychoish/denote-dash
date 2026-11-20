@@ -81,6 +81,15 @@ dispatch menu that dynamically integrates with [[https://github.com/tychoish/den
 | =denote-dash-save-view=                     | ~b s~        | Save current dashboard state as a named view             |
 | =denote-dash-jump-view=                     | ~b j~        | Restore a saved dashboard view                           |
 | =denote-dash-close-all-notes=               |              | Save and close open Denote buffers                       |
+| =denote-dash-open-series=                   | ~C-c d h s~  | Open a dash buffer narrowed to one series (default: series at point) |
+| =denote-dash-toggle-mark=                   | ~* m~        | Mark or unmark the note at point                         |
+| =denote-dash-clear-marks=                   | ~* c~        | Clear all marks                                          |
+| =denote-dash-create-nest=                   | ~* n~        | Create a note and nest the marked notes under it (needs =denote-tree=) |
+| =denote-dash-hierarchy-dispatch=            | ~?~ (hierarchy) | Transient for filtering the hierarchy view and acting on the note at point |
+
+Dash and hierarchy buffers are named for what they show (for example
+=*denote-hierarchy: 7a11 mu4e and email tools*=). Hierarchy prefix views no
+longer depend on =denote-sequence-scheme= matching the notes' signature style.
 
 * Customization
 :PROPERTIES:

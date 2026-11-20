@@ -1100,13 +1100,13 @@ exclusive major modes and can never be simultaneously reachable."
         (progn
           (denote-dash-global-mode 1)
           (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "/") #'denote-dash-hierarchy-filter))
-          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "C-f") #'denote-dash-hierarchy-clear-filter))
-          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "T") #'denote-dash-hierarchy-toggle-show-tags))
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "-") #'denote-dash-hierarchy-clear-filter))
+          (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "t") #'denote-dash-hierarchy-toggle-show-tags))
           (should (eq (keymap-lookup denote-sequence-hierarchy-mode-map "a") #'denote-dash-hierarchy-actions-menu))
           (denote-dash-global-mode -1)
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "/"))
-          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "C-f"))
-          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "T"))
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "-"))
+          (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "t"))
           (should-not (keymap-lookup denote-sequence-hierarchy-mode-map "a")))
       (denote-dash-global-mode -1))))
 
@@ -1267,24 +1267,6 @@ exclusive major modes and can never be simultaneously reachable."
             (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)))
       (delete-directory dir t))))
 
-(ert-deftest denote-dash-test/hierarchy-filter-reads-keywords-as-list ()
-  "Regression: tag filtering errored because the keywords were one string."
-  (let ((dir (make-temp-file "denote-dash-test-" t)))
-    (unwind-protect
-        (let* ((file (expand-file-name "20240101T100000==1--alpha__agent_plan.org" dir))
-               (denote-dash-hierarchy--excluded-tags nil)
-               (denote-dash-hierarchy--tag-filter nil))
-          (with-temp-file file (insert "#+title: Alpha\n"))
-          (let ((denote-dash-hierarchy--excluded-tags (list "agent")))
-            (should-not (denote-dash--hierarchy-file-matches-filter-p file)))
-          (let ((denote-dash-hierarchy--excluded-tags (list "other")))
-            (should (denote-dash--hierarchy-file-matches-filter-p file)))
-          (let ((denote-dash-hierarchy--tag-filter "plan"))
-            (should (denote-dash--hierarchy-file-matches-filter-p file)))
-          (let ((denote-dash-hierarchy--tag-filter "missing"))
-            (should-not (denote-dash--hierarchy-file-matches-filter-p file))))
-      (delete-directory dir t))))
-
 (ert-deftest denote-dash-test/hierarchy-buffer-name-uses-series-title ()
   "The hierarchy buffer is named for the series it shows."
   (let ((dir (make-temp-file "denote-dash-test-" t)))
@@ -1387,6 +1369,30 @@ exclusive major modes and can never be simultaneously reachable."
     (denote-dash-global--enable-hierarchy-keys)
     (should (eq #'denote-dash-hierarchy-dispatch
                 (keymap-lookup denote-sequence-hierarchy-mode-map "?")))))
+
+(ert-deftest denote-dash-test/hierarchy-filter-reads-keywords-as-list ()
+  "Regression: tag filtering errored because the keywords were one string."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T100000==1--alpha__agent_plan.org" dir))
+               (denote-dash-hierarchy--excluded-tags nil)
+               (denote-dash-hierarchy--tag-filter nil))
+          (with-temp-file file (insert "#+title: Alpha\n"))
+          (let ((denote-dash-hierarchy--excluded-tags (list "agent")))
+            (should-not (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--excluded-tags (list "other")))
+            (should (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--tag-filter "plan"))
+            (should (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--tag-filter "missing"))
+            (should-not (denote-dash--hierarchy-file-matches-filter-p file))))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/no-key-shadows-basic-editing ()
+  "Dash and hierarchy keys avoid C-f and C-l, which stay cursor/recenter."
+  (should-not (keymap-lookup denote-dash-mode-map "C-f"))
+  (should-not (keymap-lookup denote-dash-mode-map "C-l"))
+  (should (eq #'denote-dash-clear-filter (keymap-lookup denote-dash-mode-map "-"))))
 
 (ert-deftest denote-dash-test/hierarchy-marks-toggle-and-collect ()
   "Hierarchy lines can be marked; marks feed nesting and survive redraw."

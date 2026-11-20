@@ -1400,8 +1400,10 @@ exclusive major modes and can never be simultaneously reachable."
     (let ((file (make-temp-file "denote-dash-test-" nil ".org")))
       (unwind-protect
           (progn
-            (insert (propertize "1 Alpha\n" 'denote-sequence-hierarchy-file file))
-            (insert (propertize "2 Beta\n" 'denote-sequence-hierarchy-file "/nonexistent.org"))
+            (insert (propertize "1 Alpha\n" 'denote-sequence-hierarchy-file file
+                                'denote-sequence-hierarchy-level 1))
+            (insert (propertize "2 Beta\n" 'denote-sequence-hierarchy-file "/nonexistent.org"
+                                'denote-sequence-hierarchy-level 1))
             (denote-sequence-hierarchy-mode)
             (let ((inhibit-read-only t))
               (goto-char (point-min))

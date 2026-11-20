@@ -2628,7 +2628,8 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("^" "swap with parent" denote-tree-swap-with-parent)
     ("[" "swap with previous" denote-tree-swap-with-previous)
     ("]" "swap with next"   denote-tree-swap-with-next)
-    ("i" "insert at seq"    denote-tree-insert-sequence-note)]])
+    ("i" "insert at seq"    denote-tree-insert-sequence-note)
+    ("b" "series from recipe" denote-tree-create-series)]])
 ;;;###autoload
 (transient-define-prefix denote-dash-dispatch ()
   "Dispatch Denote commands by area."
@@ -2646,6 +2647,8 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("sh" "seq child"          denote-sequence-new-child)
     ("sp" "seq parent"         denote-sequence-new-parent)
     ("si" "insert at seq"      denote-tree-insert-sequence-note
+     :if denote-dash--denote-tree-available-p)
+    ("sb" "series from recipe" denote-tree-create-series
      :if denote-dash--denote-tree-available-p)
     ("id" "from org datetree"  denote-convert-import-from-datetree
      :if denote-dash--denote-convert-available-p)
@@ -2779,6 +2782,7 @@ Ignores any hook arguments."
   "m" (when (fboundp 'denote-tree-reparent) #'denote-tree-reparent)
   "n" (when (fboundp 'denote-tree-renumber-recursive) #'denote-tree-renumber-recursive)
   "i" (when (fboundp 'denote-tree-insert-sequence-note) #'denote-tree-insert-sequence-note)
+  "b" (when (fboundp 'denote-tree-create-series) #'denote-tree-create-series)
   "l" #'denote-sequence-link)
 
 (defvar-keymap denote-dash-org-map
@@ -2930,6 +2934,8 @@ Also updates `denote-dash-global-map' to bind the active commands."
     (keymap-set denote-dash-sequence-map "r" #'denote-tree-repack-children))
   (when (fboundp 'denote-tree-reparent)
     (keymap-set denote-dash-sequence-map "m" #'denote-tree-reparent))
+  (when (fboundp 'denote-tree-create-series)
+    (keymap-set denote-dash-sequence-map "b" #'denote-tree-create-series))
   (when (fboundp 'denote-tree-renumber-recursive)
     (keymap-set denote-dash-sequence-map "n" #'denote-tree-renumber-recursive))
   (when (fboundp 'denote-tree-insert-sequence-note)

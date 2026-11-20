@@ -85,6 +85,7 @@ dispatch menu that dynamically integrates with [[https://github.com/tychoish/den
 | =denote-dash-toggle-mark=                   | ~* m~        | Mark or unmark the note at point                         |
 | =denote-dash-clear-marks=                   | ~* c~        | Clear all marks                                          |
 | =denote-dash-create-nest=                   | ~* n~        | Create a note and nest the marked notes under it (needs =denote-tree=) |
+| =denote-tree-create-series=                 | ~C-c d s b~  | Create a series and its starter children from a recipe, then open its dash (needs =denote-tree=) |
 | =denote-dash-hierarchy-dispatch=            | ~?~ (hierarchy) | Transient for filtering the hierarchy view and acting on the note at point |
 
 Dash and hierarchy buffers are named for what they show (for example

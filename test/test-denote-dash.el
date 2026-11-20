@@ -1417,3 +1417,9 @@ exclusive major modes and can never be simultaneously reachable."
                                     (overlays-in (point-min) (point-max)))))
             (should (eq #'denote-dash--marked-files denote-tree-marked-files-function)))
         (delete-file file)))))
+
+(ert-deftest denote-dash-test/series-command-bound-in-sequence-map ()
+  "The sequence map reaches `denote-tree-create-series' on b when denote-tree loads."
+  (when (fboundp 'denote-tree-create-series)
+    (denote-dash--update-sequence-map)
+    (should (eq #'denote-tree-create-series (keymap-lookup denote-dash-sequence-map "b")))))

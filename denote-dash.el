@@ -641,6 +641,7 @@ in both ascending and descending order."
   (denote-dash--setup-columns)
   (setq tabulated-list-entries (denote-dash--compute-entries))
   (tabulated-list-print t)
+  (denote-dash--redraw-marks)
   (denote-dash--sync-buffer-name))
 
 ;;; Mode definition
@@ -709,6 +710,8 @@ in both ascending and descending order."
 
 \\{denote-dash-mode-map}"
   (setq-local denote-dash--fold-state (make-hash-table :test #'equal))
+  (setq-local tabulated-list-padding 2)
+  (setq-local denote-tree-marked-files-function #'denote-dash--marked-files)
   (unless (local-variable-p 'denote-dash--current-filter)
     (setq-local denote-dash--current-filter denote-dash-default-filter))
   (let ((cols (or denote-dash--persisted-columns denote-dash-initial-columns)))
@@ -1084,6 +1087,96 @@ point.  The buffer is named for the series and reused when it exists."
       (denote-dash-mode))
     (setq denote-dash--narrowed-sequences (list seq))
     (denote-dash-refresh)))
+
+;;; Marking and nesting
+
+(defvar denote-tree-marked-files-function)
+(declare-function denote-tree-create-nest "denote-tree")
+
+(defvar-local denote-dash--marked-files nil
+  "Files marked in this `denote-dash-mode' or hierarchy buffer.")
+(put 'denote-dash--marked-files 'permanent-local t)
+
+(defun denote-dash--marked-files ()
+  "Return the marked files, falling back to the note at point."
+  (or (seq-filter #'file-exists-p denote-dash--marked-files)
+      (when-let* ((file (denote-dash--file-at-point)))
+        (list file))))
+
+(defun denote-dash--hierarchy-mark-overlay (file)
+  "Return the mark overlay on FILE's line in a hierarchy buffer, or nil."
+  (seq-find (lambda (ov)
+              (and (overlay-get ov 'denote-dash-mark)
+                   (equal file (get-text-property (overlay-start ov)
+                                                  'denote-sequence-hierarchy-file))))
+            (overlays-in (point-min) (point-max))))
+
+(defun denote-dash--redraw-marks ()
+  "Show a mark on every row or line whose file is marked."
+  (save-excursion
+    (goto-char (point-min))
+    (while (not (eobp))
+      (if (derived-mode-p 'denote-dash-mode)
+          (when (member (tabulated-list-get-id) denote-dash--marked-files)
+            (tabulated-list-put-tag "*"))
+        (when-let* ((file (get-text-property (point) 'denote-sequence-hierarchy-file))
+                    ((member file denote-dash--marked-files))
+                    ((not (denote-dash--hierarchy-mark-overlay file))))
+          (let ((ov (make-overlay (line-beginning-position) (line-beginning-position))))
+            (overlay-put ov 'denote-dash-mark t)
+            (overlay-put ov 'before-string (propertize "* " 'face 'warning)))))
+      (forward-line 1))))
+
+(defun denote-dash-toggle-mark ()
+  "Toggle the mark on the note at point, then move to the next row."
+  (interactive)
+  (let ((file (or (denote-dash--file-at-point) (user-error "No note at point"))))
+    (setq denote-dash--marked-files
+          (if (member file denote-dash--marked-files)
+              (remove file denote-dash--marked-files)
+            (cons file denote-dash--marked-files)))
+    (if (derived-mode-p 'denote-dash-mode)
+        (tabulated-list-put-tag (if (member file denote-dash--marked-files) "*" " ") t)
+      (if-let* ((ov (denote-dash--hierarchy-mark-overlay file)))
+          (delete-overlay ov)
+        (denote-dash--redraw-marks))
+      (forward-line 1))))
+
+(defun denote-dash-clear-marks ()
+  "Remove every mark in this buffer."
+  (interactive)
+  (setq denote-dash--marked-files nil)
+  (revert-buffer))
+
+;;;###autoload
+(defun denote-dash-create-nest (title)
+  "Create a note titled TITLE and nest the marked notes under it.
+Works in dash and hierarchy buffers; uses the note at point when nothing is
+marked.  Needs `denote-tree'; see `denote-tree-create-nest'."
+  (interactive
+   (list (read-string (format "Nest title (%d note%s): "
+                              (length (denote-dash--marked-files))
+                              (if (cdr (denote-dash--marked-files)) "s" "")))))
+  (unless (fboundp 'denote-tree-create-nest)
+    (user-error "Nesting needs the denote-tree package"))
+  (denote-tree-create-nest (denote-dash--marked-files) title)
+  (setq denote-dash--marked-files nil)
+  (revert-buffer))
+
+(defun denote-dash--hierarchy-setup-marks ()
+  "Let `denote-tree-create-nest' see marks, and redraw them after a revert."
+  (setq-local denote-tree-marked-files-function #'denote-dash--marked-files)
+  (remove-overlays (point-min) (point-max) 'denote-dash-mark t)
+  (denote-dash--redraw-marks))
+
+(add-hook 'denote-sequence-hierarchy-mode-hook #'denote-dash--hierarchy-setup-marks)
+
+(defvar-keymap denote-dash-mark-map
+  :doc "Keymap for marking and nesting notes in `denote-dash-mode'."
+  "m" #'denote-dash-toggle-mark
+  "c" #'denote-dash-clear-marks
+  "n" #'denote-dash-create-nest)
+(keymap-set denote-dash-mode-map "*" (cons "mark" denote-dash-mark-map))
 
 ;;; Navigation
 
@@ -2515,6 +2608,28 @@ When FORCE is non-nil, re-initialize even if already initialized."
        ["Display"
         ("e" denote-dash-toggle-front-matter-titles)
         ("w" "set column width" denote-dash-set-column-width)]])
+(transient-define-prefix denote-dash-hierarchy-dispatch ()
+  "Filter the sequence hierarchy view and act on the note at point."
+  [["Filter"
+    ("t" "by tag"           denote-dash-hierarchy-filter)
+    ("x" "exclude tag"      denote-dash-hierarchy-exclude-tag)
+    ("c" "clear filters"    denote-dash-hierarchy-clear-filter)
+    ("s" "toggle tag display" denote-dash-hierarchy-toggle-show-tags)]
+   ["View"
+    ("v" "scope to note"    denote-dash-hierarchy-view-by-note)
+    ("d" "dash for series"  denote-dash-open-series)
+    ("g" "refresh"          revert-buffer)]
+   ["Note at point"
+    ("r" "rename"           denote-dash-rename-file)
+    ("f" "rename from fm"   denote-dash-rename-file-using-front-matter)
+    ("e" "retag"            denote-dash-retag-file)]
+   ["Move" :if denote-dash--denote-tree-available-p
+    ("m" "reparent"         denote-tree-reparent)
+    ("n" "renumber"         denote-tree-renumber-recursive)
+    ("^" "swap with parent" denote-tree-swap-with-parent)
+    ("[" "swap with previous" denote-tree-swap-with-previous)
+    ("]" "swap with next"   denote-tree-swap-with-next)
+    ("i" "insert at seq"    denote-tree-insert-sequence-note)]])
 ;;;###autoload
 (transient-define-prefix denote-dash-dispatch ()
   "Dispatch Denote commands by area."
@@ -2573,6 +2688,7 @@ When FORCE is non-nil, re-initialize even if already initialized."
     ("vh" "sequence hierarchy" denote-sequence-view-hierarchy
      :inapt-if-derived denote-sequence-hierarchy-mode)
     ("vs" "dash for series"    denote-dash-open-series)
+    ("vt" "hierarchy for note" denote-dash-hierarchy-view-by-note)
     ("vf" "dired"              denote-dired)
     ("vc" "close all notes"    denote-dash-close-all-notes)
     ("vk" "save+kill all notes" denote-dash-save-and-kill-all-notes)]
@@ -2626,6 +2742,14 @@ Optional ARGS are passed to `transient-setup' as scope."
   (interactive)
   (denote-dash--setup-transients)
   (transient-setup 'denote-dash-column-transient nil nil :scope args))
+
+;;;###autoload
+(defun denote-dash-hierarchy-dispatch (&optional args)
+  "Filter the sequence hierarchy view and act on the note at point.
+Optional ARGS are passed to `transient-setup' as scope."
+  (interactive)
+  (denote-dash--setup-transients)
+  (transient-setup 'denote-dash-hierarchy-dispatch nil nil :scope args))
 
 ;;;###autoload
 (defun denote-dash-dispatch (&optional args)
@@ -2878,7 +3002,9 @@ Restored when `denote-dash-global-mode' is disabled.")
     (keymap-set denote-sequence-hierarchy-mode-map "/" #'denote-dash-hierarchy-filter)
     (keymap-set denote-sequence-hierarchy-mode-map "C-f" #'denote-dash-hierarchy-clear-filter)
     (keymap-set denote-sequence-hierarchy-mode-map "T" #'denote-dash-hierarchy-toggle-show-tags)
-    (keymap-set denote-sequence-hierarchy-mode-map "a" #'denote-dash-hierarchy-actions-menu)))
+    (keymap-set denote-sequence-hierarchy-mode-map "a" #'denote-dash-hierarchy-actions-menu)
+    (keymap-set denote-sequence-hierarchy-mode-map "?" #'denote-dash-hierarchy-dispatch)
+    (keymap-set denote-sequence-hierarchy-mode-map "*" (cons "mark" denote-dash-mark-map))))
 
 (defun denote-dash-global--disable-hierarchy-keys ()
   "Unbind denote-dash keys in `denote-sequence-hierarchy-mode-map'."
@@ -2886,7 +3012,9 @@ Restored when `denote-dash-global-mode' is disabled.")
     (keymap-unset denote-sequence-hierarchy-mode-map "/" t)
     (keymap-unset denote-sequence-hierarchy-mode-map "C-f" t)
     (keymap-unset denote-sequence-hierarchy-mode-map "T" t)
-    (keymap-unset denote-sequence-hierarchy-mode-map "a" t)))
+    (keymap-unset denote-sequence-hierarchy-mode-map "a" t)
+    (keymap-unset denote-sequence-hierarchy-mode-map "?" t)
+    (keymap-unset denote-sequence-hierarchy-mode-map "*" t)))
 
 (defvar denote-dash-global-mode-map
   (let ((map (make-sparse-keymap)))

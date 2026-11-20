@@ -1324,3 +1324,90 @@ exclusive major modes and can never be simultaneously reachable."
 (ert-deftest denote-dash-test/open-series-rejects-non-sequence ()
   "A string that is not a sequence id is a user error."
   (should-error (denote-dash-open-series "not a sequence") :type 'user-error))
+
+(ert-deftest denote-dash-test/toggle-mark-tracks-files ()
+  "Marking toggles the row's file in `denote-dash--marked-files'."
+  (with-temp-buffer
+    (denote-dash-mode)
+    (setq tabulated-list-entries '(("/tmp/a.org" ["a"]) ("/tmp/b.org" ["b"])))
+    (setq tabulated-list-sort-key nil)
+    (setq tabulated-list-format [("T" 5 nil)])
+    (tabulated-list-init-header)
+    (tabulated-list-print)
+    (goto-char (point-min))
+    (denote-dash-toggle-mark)
+    (should (equal '("/tmp/a.org") denote-dash--marked-files))
+    (goto-char (point-min))
+    (denote-dash-toggle-mark)
+    (should-not denote-dash--marked-files)))
+
+(ert-deftest denote-dash-test/marked-files-falls-back-to-row-at-point ()
+  "With nothing marked, the row at point is the nest target."
+  (let ((file (make-temp-file "denote-dash-test-" nil ".org")))
+    (unwind-protect
+        (with-temp-buffer
+          (denote-dash-mode)
+          (setq tabulated-list-entries (list (list file ["a"])))
+          (setq tabulated-list-sort-key nil)
+          (setq tabulated-list-format [("T" 5 nil)])
+          (tabulated-list-init-header)
+          (tabulated-list-print)
+          (goto-char (point-min))
+          (should (equal (list file) (denote-dash--marked-files))))
+      (delete-file file))))
+
+(ert-deftest denote-dash-test/create-nest-passes-marked-files-to-tree ()
+  "Nesting forwards marked files and the title to `denote-tree-create-nest'."
+  (let (received)
+    (with-temp-buffer
+      (denote-dash-mode)
+      (setq tabulated-list-entries nil)
+      (let ((f (make-temp-file "denote-dash-test-" nil ".org")))
+        (unwind-protect
+            (progn
+              (setq denote-dash--marked-files (list f))
+              (cl-letf (((symbol-function 'denote-tree-create-nest)
+                         (lambda (files title &rest _) (setq received (list files title))))
+                        ((symbol-function 'denote-dash-refresh) #'ignore))
+                (denote-dash-create-nest "Bundle"))
+              (should (equal (list (list f) "Bundle") received))
+              (should-not denote-dash--marked-files))
+          (delete-file f))))))
+
+(ert-deftest denote-dash-test/hierarchy-dispatch-keys-unique ()
+  "The hierarchy transient has no duplicate or shadowing keys."
+  (let ((keys (transient-test/collect-keys 'denote-dash-hierarchy-dispatch)))
+    (should keys)
+    (should-not (transient-test/duplicate-keys keys))
+    (should-not (transient-test/key-prefix-conflicts keys))))
+
+(ert-deftest denote-dash-test/hierarchy-dispatch-bound-in-hierarchy-map ()
+  "Enabling hierarchy keys binds ? to the hierarchy transient."
+  (let ((denote-sequence-hierarchy-mode-map (make-sparse-keymap)))
+    (denote-dash-global--enable-hierarchy-keys)
+    (should (eq #'denote-dash-hierarchy-dispatch
+                (keymap-lookup denote-sequence-hierarchy-mode-map "?")))))
+
+(ert-deftest denote-dash-test/hierarchy-marks-toggle-and-collect ()
+  "Hierarchy lines can be marked; marks feed nesting and survive redraw."
+  (with-temp-buffer
+    (let ((file (make-temp-file "denote-dash-test-" nil ".org")))
+      (unwind-protect
+          (progn
+            (insert (propertize "1 Alpha\n" 'denote-sequence-hierarchy-file file))
+            (insert (propertize "2 Beta\n" 'denote-sequence-hierarchy-file "/nonexistent.org"))
+            (denote-sequence-hierarchy-mode)
+            (let ((inhibit-read-only t))
+              (goto-char (point-min))
+              (denote-dash-toggle-mark)
+              (should (equal (list file) denote-dash--marked-files))
+              (should (seq-some (lambda (ov) (overlay-get ov 'denote-dash-mark))
+                                (overlays-in (point-min) (point-max))))
+              (should (equal (list file) (denote-dash--marked-files)))
+              (goto-char (point-min))
+              (denote-dash-toggle-mark)
+              (should-not denote-dash--marked-files)
+              (should-not (seq-some (lambda (ov) (overlay-get ov 'denote-dash-mark))
+                                    (overlays-in (point-min) (point-max)))))
+            (should (eq #'denote-dash--marked-files denote-tree-marked-files-function)))
+        (delete-file file)))))

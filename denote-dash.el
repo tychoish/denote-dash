@@ -874,7 +874,7 @@ path in the `denote-sequence-hierarchy-file' text property; in a
 
 (defun denote-dash--hierarchy-file-matches-filter-p (file)
   "Return non-nil if FILE satisfies the active hierarchy tag filter."
-  (let* ((keywords (denote-retrieve-filename-keywords file))
+  (let* ((keywords (denote-extract-keywords-from-path file))
          (excluded (or denote-dash-hierarchy--excluded-tags denote-dash-hierarchy-excluded-tags))
          (filter denote-dash-hierarchy--tag-filter))
     (and (if excluded
@@ -977,6 +977,18 @@ called is always that origin."
       (setq-local denote-dash--hierarchy-origin-buffer origin)
       (add-hook 'kill-buffer-hook #'denote-dash--hierarchy-kill-return-to-origin nil t))))
 
+
+;;; Sequence prefix matching
+
+(defun ad:denote-dash--sequence-prefix-p (prefix sequence)
+  "Return non-nil if SEQUENCE starts with the components in PREFIX.
+Replaces `denote-sequence--sequence-prefix-p', which also demands that
+SEQUENCE use `denote-sequence-scheme'.  With a numeric scheme and notes
+signed in the alphanumeric scheme (7a11, 7a11a2), that demand rejects every
+note, so a hierarchy view scoped to a sequence reports \"No sequences
+found\".  `denote-sequence-split' already reads either scheme."
+  (let ((components (denote-sequence-split sequence)))
+    (equal prefix (seq-take components (length prefix)))))
 
 ;;; Navigation
 
@@ -2745,6 +2757,7 @@ Restored when `denote-dash-global-mode' is disabled.")
   "Enable advice managed by `denote-dash-global-mode'."
   (advice-add 'denote-sequence--format-hierarchy-entry :around #'ad:denote-dash--hierarchy-format-entry)
   (advice-add 'denote-sequence--hierarchy-insert :around #'ad:denote-dash--hierarchy-insert)
+  (advice-add 'denote-sequence--sequence-prefix-p :override #'ad:denote-dash--sequence-prefix-p)
   (advice-add 'denote-sequence-hierarchy-find-file :around #'ad:denote-dash--hierarchy-track-origin)
   (advice-add 'denote-review-set-date :around #'ad:denote-dash--review-set-date-target-file)
   (advice-add 'denote-review-display-list :around #'ad:denote-dash--review-display-list)
@@ -2754,6 +2767,7 @@ Restored when `denote-dash-global-mode' is disabled.")
   "Disable advice managed by `denote-dash-global-mode'."
   (advice-remove 'denote-sequence--format-hierarchy-entry #'ad:denote-dash--hierarchy-format-entry)
   (advice-remove 'denote-sequence--hierarchy-insert #'ad:denote-dash--hierarchy-insert)
+  (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)
   (advice-remove 'denote-sequence-hierarchy-find-file #'ad:denote-dash--hierarchy-track-origin)
   (advice-remove 'denote-review-set-date #'ad:denote-dash--review-set-date-target-file)
   (advice-remove 'denote-review-display-list #'ad:denote-dash--review-display-list)

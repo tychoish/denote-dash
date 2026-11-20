@@ -1230,3 +1230,57 @@ exclusive major modes and can never be simultaneously reachable."
                          "\\*\\* TODO \\[\\[denote:20261114T020000\\]\\[Brand New Note\\]\\]"
                          (buffer-string)))))))
       (delete-directory dir t))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Series views: prefix matching, naming, open-series, marks, transient
+
+(defun denote-dash-test--make-seq-note (dir id sig title)
+  "Write a minimal org note in DIR with signature SIG and return its path."
+  (let ((file (expand-file-name
+               (format "%s==%s--%s.org" id sig (downcase (replace-regexp-in-string " " "-" title)))
+               dir)))
+    (with-temp-file file
+      (insert "#+title:      " title "\n#+identifier: " id "\n#+signature: " sig "\n\nBody.\n"))
+    file))
+
+(ert-deftest denote-dash-test/prefix-p-ignores-user-scheme ()
+  "Alphanumeric notes match their prefix even with a numeric scheme."
+  (let ((denote-sequence-scheme 'numeric))
+    (should (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a11"))
+    (should (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a11a2"))
+    (should (ad:denote-dash--sequence-prefix-p '("7") "7a11"))
+    (should-not (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a1"))
+    (should-not (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "8a11"))))
+
+(ert-deftest denote-dash-test/hierarchy-prefix-finds-notes-with-mismatched-scheme ()
+  "Regression: a prefix view on 7a11 found nothing under a numeric scheme."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let ((denote-sequence-scheme 'numeric)
+              (denote-directory (list dir)))
+          (denote-dash-test--make-seq-note dir "20240101T100000" "7a11" "Root")
+          (denote-dash-test--make-seq-note dir "20240101T100100" "7a11a2" "Child")
+          (denote-dash-test--make-seq-note dir "20240101T100200" "7a12" "Other")
+          (advice-add 'denote-sequence--sequence-prefix-p :override #'ad:denote-dash--sequence-prefix-p)
+          (unwind-protect
+              (should (= 2 (length (denote-sequence-get-all-files-with-prefix "7a11"))))
+            (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)))
+      (delete-directory dir t))))
+
+(ert-deftest denote-dash-test/hierarchy-filter-reads-keywords-as-list ()
+  "Regression: tag filtering errored because the keywords were one string."
+  (let ((dir (make-temp-file "denote-dash-test-" t)))
+    (unwind-protect
+        (let* ((file (expand-file-name "20240101T100000==1--alpha__agent_plan.org" dir))
+               (denote-dash-hierarchy--excluded-tags nil)
+               (denote-dash-hierarchy--tag-filter nil))
+          (with-temp-file file (insert "#+title: Alpha\n"))
+          (let ((denote-dash-hierarchy--excluded-tags (list "agent")))
+            (should-not (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--excluded-tags (list "other")))
+            (should (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--tag-filter "plan"))
+            (should (denote-dash--hierarchy-file-matches-filter-p file)))
+          (let ((denote-dash-hierarchy--tag-filter "missing"))
+            (should-not (denote-dash--hierarchy-file-matches-filter-p file))))
+      (delete-directory dir t))))

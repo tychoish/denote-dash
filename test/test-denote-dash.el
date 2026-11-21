@@ -1424,4 +1424,37 @@ exclusive major modes and can never be simultaneously reachable."
   "The sequence map reaches `denote-tree-create-series' on b when denote-tree loads."
   (when (fboundp 'denote-tree-create-series)
     (denote-dash--update-sequence-map)
-    (should (eq #'denote-tree-create-series (keymap-lookup denote-dash-sequence-map "b")))))
+    (should (eq #'denote-tree-create-series (keymap-lookup denote-dash-sequence-map "b")))))(ert-deftest denote-dash-test/sequence-column-grows-to-fit-entries ()
+  "Long signatures remain visible even with a smaller configured width."
+  (let ((denote-dash--visible-columns '(title sequence))
+        (denote-dash--column-widths '((sequence . 3)))
+        (tabulated-list-entries '(("file" ["Title" "1a2b3c4d5e"]))))
+    (should (= 10 (denote-dash--column-width 'sequence)))))
+
+(ert-deftest denote-dash-test/default-columns-put-keywords-after-id ()
+  "The default layout leaves keywords at the right edge."
+  (should (< (seq-position denote-dash-initial-columns 'id)
+             (seq-position denote-dash-initial-columns 'keywords))))
+
+(ert-deftest denote-dash-test/clone-view-independent ()
+  "Cloning copies state without saving a bookmark or renaming the source."
+  (let ((denote-dash-saved-views nil)
+        (source (generate-new-buffer " *dash-clone-source*"))
+        clone)
+    (unwind-protect
+        (with-current-buffer source
+          (denote-dash-mode)
+          (setq-local denote-dash--current-filter '(and "alpha" "beta"))
+          (setq-local denote-dash--narrowed-sequences '("1a"))
+          (cl-letf (((symbol-function 'denote-dash-refresh) #'ignore)
+                    ((symbol-function 'pop-to-buffer) (lambda (buffer &rest _) (setq clone buffer))))
+            (denote-dash-clone-view "test clone"))
+          (should-not denote-dash-saved-views)
+          (with-current-buffer clone
+            (should (equal denote-dash--current-filter '(and "alpha" "beta")))
+            (setcar denote-dash--narrowed-sequences "other")
+            (denote-dash--sync-buffer-name)
+            (should (equal (buffer-name) "*denote-dash: test clone*")))
+          (should (equal denote-dash--narrowed-sequences '("1a"))))
+      (when (buffer-live-p clone) (kill-buffer clone))
+      (when (buffer-live-p source) (kill-buffer source)))))

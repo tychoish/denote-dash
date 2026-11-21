@@ -136,7 +136,7 @@ filter language: strings, (or ...), (and ...), (not ...)."
   :type '(alist :key-type string :value-type sexp)
   :group 'denote-dash)
 
-(defcustom denote-dash-initial-columns '(sequence title keywords id)
+(defcustom denote-dash-initial-columns '(sequence title id keywords)
   "Columns shown when the *denote-dash* buffer is first created.
 Valid symbols: fold, sequence, title, keywords, modified, id, directory,
 git, review, reviewdate."
@@ -276,7 +276,7 @@ with AND in `denote-dash--file-visible-p'. nil shows all notes regardless
 of content.")
 
 (defvar denote-dash-column-order
-  '(sequence fold title keywords id directory modified git review reviewdate)
+  '(sequence fold title id keywords directory modified git review reviewdate)
   "Canonical display order for columns; determines left-to-right position.")
 
 (defvar denote-dash--persisted-columns nil
@@ -313,6 +313,9 @@ Absent entries default to `subtree'.  States: `folded', `children', `subtree'.")
 (defvar denote-dash-saved-views nil
   "List of `denote-dash-view' structures representing saved filter views.
 Persisted across sessions via `savehist-mode'.")
+
+(defvar-local denote-dash--clone-buffer-name nil
+  "Persistent name for a cloned dashboard buffer.")
 
 (defvar-local denote-dash--last-bookmark-name nil
   "Most recently saved or jumped view name in this buffer.")
@@ -567,10 +570,17 @@ FILE and ALL-SEQ-IDS."
 
 (defun denote-dash--column-width (col)
   "Return display width for COL, consulting buffer-local overrides first."
-  (or (alist-get col denote-dash--column-widths)
+  (if (eq col 'sequence)
+      (seq-reduce #'max
+                  (seq-map (lambda (entry)
+                             (string-width (aref (cadr entry)
+                                                 (seq-position denote-dash--visible-columns 'sequence))))
+                           tabulated-list-entries)
+                  (or (alist-get col denote-dash--column-widths)
+                      denote-dash-sequence-column-width))
+    (or (alist-get col denote-dash--column-widths)
       (pcase col
         ('fold      1)
-        ('sequence  denote-dash-sequence-column-width)
         ('title     44)
         ('keywords  25)
         ('modified  10)
@@ -579,7 +589,7 @@ FILE and ALL-SEQ-IDS."
         ('git       1)
         ('review    3)
         ('reviewdate 10)
-        (_          10))))
+        (_          10)))))
 
 (defun denote-dash--sequence-sort-predicate (entry1 entry2)
   "Sort predicate for the Sequence column in `denote-dash'.
@@ -638,8 +648,8 @@ in both ascending and descending order."
   (interactive)
   (when (member 'git denote-dash--visible-columns)
     (setq denote-dash--git-cache (denote-dash--build-git-cache)))
-  (denote-dash--setup-columns)
   (setq tabulated-list-entries (denote-dash--compute-entries))
+  (denote-dash--setup-columns)
   (tabulated-list-print t)
   (denote-dash--redraw-marks)
   (denote-dash--sync-buffer-name))
@@ -1038,6 +1048,7 @@ after the raw arguments."
 Saved views keep their view name; narrowed buffers are named for the
 series they show; everything else is the plain \"*denote-dash*\"."
   (cond
+   (denote-dash--clone-buffer-name denote-dash--clone-buffer-name)
    (denote-dash--last-bookmark-name
     (denote-dash--view-buffer-name denote-dash--last-bookmark-name))
    (denote-dash--narrowed-sequences
@@ -1908,19 +1919,33 @@ own buffer independently."
 
 ;;;###autoload
 (defun denote-dash-clone-view (&optional name)
-  "Clone current view state into a new dedicated buffer `*denote-dash: NAME*'.
-Saves view as NAME in `denote-dash-saved-views' and switches to buffer."
-  (interactive
-   (list
-    (let* ((names (seq-map #'denote-dash-view-name denote-dash-saved-views))
-           (default (or denote-dash--last-bookmark-name "subset"))
-           (prompt (format "Clone view to buffer name (default %s): " default))
-           (input (completing-read prompt names nil nil nil nil default)))
-      (if (string-blank-p input) default input))))
+  "Clone the current view into a new independent buffer named NAME.
+The clone is not saved as a bookmark.  It can be saved separately with
+`denote-dash-bookmark-save'."
+  (interactive (list (read-string "Clone view name: ")))
   (when (or (null name) (string-blank-p name))
     (user-error "View name cannot be empty"))
-  (denote-dash-bookmark-save name)
-  (denote-dash-open-view name))
+  (let* ((variables '(denote-dash--current-filter denote-dash--narrowed-sequences
+                      denote-dash--keyword-toggles denote-dash--active-directory
+                      denote-dash--grep-filter denote-dash--show-non-sequence
+                      denote-dash--visible-columns denote-dash--column-widths
+                      denote-dash--fold-state denote-dash--global-cycle-depth
+                      denote-dash--marked-files tabulated-list-sort-key))
+         (state (seq-map (lambda (variable)
+                           (let ((value (symbol-value variable)))
+                             (cons variable (if (hash-table-p value)
+                                                (copy-hash-table value)
+                                              (copy-tree value)))))
+                         variables))
+         (buffer (generate-new-buffer (denote-dash--view-buffer-name name))))
+    (with-current-buffer buffer
+      (denote-dash-mode)
+      (seq-do (lambda (entry) (set (make-local-variable (car entry)) (cdr entry)))
+              state)
+      (setq-local denote-dash--clone-buffer-name (buffer-name))
+      (setq-local denote-dash--last-bookmark-name nil)
+      (denote-dash-refresh))
+    (pop-to-buffer buffer)))
 
 (defun denote-dash-bookmark-jump (&optional name in-new-buffer)
   "Restore a saved view by NAME.

@@ -92,6 +92,14 @@ Dash and hierarchy buffers are named for what they show (for example
 =*denote-hierarchy: 7a11 mu4e and email tools*=). Hierarchy prefix views no
 longer depend on =denote-sequence-scheme= matching the notes' signature style.
 
+* Independent dashboard views
+
+Use ~b c~ to clone the current dashboard into a named, independent
+buffer.  Filters, narrowing, columns, sort order, folds, and marks are
+copied; subsequent changes do not affect the original.  Cloning does not
+save or overwrite a bookmark.  Open a saved view with ~b o~ before cloning
+it, or save a clone as a bookmark with ~b s~.
+
 * Customization
 :PROPERTIES:
 :CUSTOM_ID: customization

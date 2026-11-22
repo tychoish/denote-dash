@@ -3051,6 +3051,15 @@ Restored when `denote-dash-global-mode' is disabled.")
     map)
   "Keymap used by `denote-dash-global-mode'.")
 
+(defun denote-dash-global--on-consult-loaded (file)
+  "Configure consult integration when `consult-denote' or `consult-notes' loads.
+FILE is the loaded file path provided by `after-load-functions'."
+  (when (and denote-dash-global-mode
+             (stringp file)
+             (or (string-match-p "consult-denote" file)
+                 (string-match-p "consult-notes" file)))
+    (denote-dash--setup-consult)))
+
 ;;;###autoload
 (define-minor-mode denote-dash-global-mode
   "Global minor mode for Denote dashboard, sequence, and note keybindings."
@@ -3064,6 +3073,7 @@ Restored when `denote-dash-global-mode' is disabled.")
         (denote-dash-global--enable-advice)
         (denote-dash-global--enable-hierarchy-keys)
         (add-hook 'denote-sequence-hierarchy-mode-hook #'denote-dash-global--enable-hierarchy-keys)
+        (add-hook 'after-load-functions #'denote-dash-global--on-consult-loaded)
         (when denote-dash-global-prefix
           (keymap-set denote-dash-global-mode-map denote-dash-global-prefix denote-dash-global-map))
         (when denote-dash--consult-timer
@@ -3075,6 +3085,7 @@ Restored when `denote-dash-global-mode' is disabled.")
     (denote-dash-global--revert-settings)
     (denote-dash-global--disable-advice)
     (remove-hook 'denote-sequence-hierarchy-mode-hook #'denote-dash-global--enable-hierarchy-keys)
+    (remove-hook 'after-load-functions #'denote-dash-global--on-consult-loaded)
     (denote-dash-global--disable-hierarchy-keys)
     (when denote-dash-global-prefix
       (keymap-unset denote-dash-global-mode-map denote-dash-global-prefix t))
@@ -3084,12 +3095,6 @@ Restored when `denote-dash-global-mode' is disabled.")
 
 (add-hook 'denote-dash-mode-hook #'denote-dash--update-sequence-map)
 (add-hook 'denote-dash-global-mode-hook #'denote-dash--update-sequence-map)
-(add-hook 'after-load-functions
-          (lambda (file)
-            (when (and denote-dash-global-mode
-                       (or (string-match-p "consult-denote" file)
-                           (string-match-p "consult-notes" file)))
-              (denote-dash--setup-consult))))
 (add-hook 'denote-convert-after-conversion-functions #'denote-dash-refresh-all-buffers)
 (add-hook 'denote-tree-after-rename-functions #'denote-dash-refresh-all-buffers)
 (add-hook 'denote-tree-after-reseq-functions #'denote-dash-refresh-all-buffers)

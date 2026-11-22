@@ -945,6 +945,33 @@ exclusive major modes and can never be simultaneously reachable."
     (denote-dash-global-mode -1)
     (should-not denote-dash--consult-timer)))
 
+(ert-deftest denote-dash-test/global-mode-after-load-hook ()
+  "Enabling `denote-dash-global-mode' manages after-load hook; disabling cleans up."
+  (let ((denote-dash-global-mode nil)
+        (after-load-functions nil))
+    (denote-dash-global-mode 1)
+    (should (memq #'denote-dash-global--on-consult-loaded after-load-functions))
+    (denote-dash-global-mode -1)
+    (should-not (memq #'denote-dash-global--on-consult-loaded after-load-functions))))
+
+(ert-deftest denote-dash-test/global-mode-on-consult-loaded ()
+  "Calling `denote-dash-global--on-consult-loaded' calls setup-consult when mode is active."
+  (let ((denote-dash-global-mode t)
+        (called nil))
+    (cl-letf (((symbol-function 'denote-dash--setup-consult)
+               (lambda (&rest _) (setq called t))))
+      (denote-dash-global--on-consult-loaded "/path/to/consult-denote.el")
+      (should called)
+      (setq called nil)
+      (denote-dash-global--on-consult-loaded "/path/to/consult-notes.el")
+      (should called)
+      (setq called nil)
+      (denote-dash-global--on-consult-loaded "/path/to/other.el")
+      (should-not called)
+      (let ((denote-dash-global-mode nil))
+        (denote-dash-global--on-consult-loaded "/path/to/consult-denote.el")
+        (should-not called)))))
+
 (ert-deftest denote-dash-test/consult-stubs-are-commands ()
   "Consult wrapper functions are interactive commands."
   (should (commandp 'denote-dash-find-file))

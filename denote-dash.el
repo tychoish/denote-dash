@@ -751,7 +751,6 @@ in both ascending and descending order."
        (denote-file-has-identifier-p file)))
    (buffer-list)))
 
-;;;###autoload
 (defun denote-dash--close-note-buffer (buf)
   "Close Denote note buffer BUF, prompting to save if modified.
 Returns a cons cell (SAVED-P . STALE-NAME)."
@@ -2569,7 +2568,6 @@ place afterward via `revert-buffer'."
 ;;   w* = narrow (ws, wt, ww, wk)
 ;;   n, j, id = bare single-key create commands
 
-;;;###autoload
 (defun denote-dash--denote-review-available-p ()
   "Return non-nil if `denote-review' is available."
   (require 'denote-review nil t))
@@ -3050,6 +3048,8 @@ Restored when `denote-dash-global-mode' is disabled.")
   (let ((map (make-sparse-keymap)))
     map)
   "Keymap used by `denote-dash-global-mode'.")
+
+(defvar denote-dash-global-mode)
 
 (defun denote-dash-global--on-consult-loaded (file)
   "Configure consult integration when `consult-denote' or `consult-notes' loads.

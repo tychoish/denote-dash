@@ -897,7 +897,7 @@ path in the `denote-sequence-hierarchy-file' text property; in a
              (denote-dash--matches-p keywords filter)
            t))))
 
-(defun ad:denote-dash--hierarchy-format-entry (orig-fn indent sequence title keywords)
+(defun denote-dash--advice-hierarchy-format-entry (orig-fn indent sequence title keywords)
   "Advice to optionally omit KEYWORDS in hierarchy format entry.
 Respects `denote-dash-hierarchy--show-tags'
 (or `denote-dash-hierarchy-show-tags')."
@@ -906,7 +906,7 @@ Respects `denote-dash-hierarchy--show-tags'
                 denote-dash-hierarchy--show-tags)))
     (funcall orig-fn indent sequence title (if show keywords nil))))
 
-(defun ad:denote-dash--hierarchy-insert (orig-fn file)
+(defun denote-dash--advice-hierarchy-insert (orig-fn file)
   "Conditionally insert FILE in hierarchy if it matches tag filter."
   (when (denote-dash--hierarchy-file-matches-filter-p file)
     (funcall orig-fn file)))
@@ -972,14 +972,14 @@ TAG can be a tag string or a filter expression."
 
 (defun denote-dash--hierarchy-kill-return-to-origin ()
   "Switch windows showing this buffer back to its hierarchy origin, if live.
-Added to `kill-buffer-hook' by `ad:denote-dash--hierarchy-track-origin' so
+Added to `kill-buffer-hook' by `denote-dash--advice-hierarchy-track-origin' so
 that killing a note opened from a hierarchy view returns focus to that
 view rather than to whatever `switch-to-prev-buffer' picks next."
   (when (buffer-live-p denote-dash--hierarchy-origin-buffer)
     (seq-do (lambda (window) (set-window-buffer window denote-dash--hierarchy-origin-buffer))
             (get-buffer-window-list (current-buffer) nil t))))
 
-(defun ad:denote-dash--hierarchy-track-origin (fn &rest args)
+(defun denote-dash--advice-hierarchy-track-origin (fn &rest args)
   "Record the hierarchy buffer FN was called from on the note buffer it opens.
 `denote-sequence-hierarchy-find-file' is only invoked from a
 `denote-sequence-hierarchy-mode' buffer, so the buffer current when FN is
@@ -993,7 +993,7 @@ called is always that origin."
 
 ;;; Sequence prefix matching
 
-(defun ad:denote-dash--sequence-prefix-p (prefix sequence)
+(defun denote-dash--advice-sequence-prefix-p (prefix sequence)
   "Return non-nil if SEQUENCE starts with the components in PREFIX.
 Replaces `denote-sequence--sequence-prefix-p', which also demands that
 SEQUENCE use `denote-sequence-scheme'.  With a numeric scheme and notes
@@ -1030,7 +1030,7 @@ is set, \"all\" otherwise, with the depth limit when given."
             "all")
           (if depth (format " (depth %s)" depth) "")))
 
-(defun ad:denote-dash--hierarchy-get-buffer (prefix depth)
+(defun denote-dash--advice-hierarchy-get-buffer (prefix depth)
   "Return the hierarchy buffer for PREFIX and DEPTH, named for its contents.
 Replaces `denote-sequence--hierarchy-get-buffer', which names the buffer
 after the raw arguments."
@@ -1202,7 +1202,7 @@ marked.  Needs `denote-tree'; see `denote-tree-create-nest'."
   (when-let* ((file (tabulated-list-get-id)))
     (find-file-other-window file)))
 
-(defun ad:denote-dash--review-set-date-target-file (orig-fn &rest args)
+(defun denote-dash--advice-review-set-date-target-file (orig-fn &rest args)
   "Make `denote-review-set-date' target the current note or note at point."
   (if (and buffer-file-name (denote-file-has-identifier-p buffer-file-name))
       (apply orig-fn args)
@@ -1569,7 +1569,7 @@ With a prefix argument C-u when called interactively, prompts for a filter."
                      (t "due"))))
       (force-mode-line-update))))
 
-(defun ad:denote-dash--review-display-list (_orig-fn &optional filter)
+(defun denote-dash--advice-review-display-list (_orig-fn &optional filter)
   "Make `denote-review-display-list' use `denote-dash-review-display-list'."
   (if (or filter current-prefix-arg (not (called-interactively-p 'any)))
       (denote-dash-review-display-list filter)
@@ -2370,7 +2370,7 @@ Suitable as a value for `denote-link-description-format'."
       (format "[%s]" signature))
      (t ""))))
 
-(defun ad:denote-dash--link-ol-get-heading-org-only (fn &rest args)
+(defun denote-dash--advice-link-ol-get-heading-org-only (fn &rest args)
   "Only call FN in `org-mode' buffers.
 `denote-link-ol-store' calls `denote-link-ol-get-heading' unconditionally
 even when visiting non-Org Denote files (e.g. Markdown), which causes
@@ -3006,25 +3006,25 @@ Restored when `denote-dash-global-mode' is disabled.")
 
 (defun denote-dash-global--enable-advice ()
   "Enable advice managed by `denote-dash-global-mode'."
-  (advice-add 'denote-sequence--format-hierarchy-entry :around #'ad:denote-dash--hierarchy-format-entry)
-  (advice-add 'denote-sequence--hierarchy-insert :around #'ad:denote-dash--hierarchy-insert)
-  (advice-add 'denote-sequence--sequence-prefix-p :override #'ad:denote-dash--sequence-prefix-p)
-  (advice-add 'denote-sequence--hierarchy-get-buffer :override #'ad:denote-dash--hierarchy-get-buffer)
-  (advice-add 'denote-sequence-hierarchy-find-file :around #'ad:denote-dash--hierarchy-track-origin)
-  (advice-add 'denote-review-set-date :around #'ad:denote-dash--review-set-date-target-file)
-  (advice-add 'denote-review-display-list :around #'ad:denote-dash--review-display-list)
-  (advice-add 'denote-link-ol-get-heading :around #'ad:denote-dash--link-ol-get-heading-org-only))
+  (advice-add 'denote-sequence--format-hierarchy-entry :around #'denote-dash--advice-hierarchy-format-entry)
+  (advice-add 'denote-sequence--hierarchy-insert :around #'denote-dash--advice-hierarchy-insert)
+  (advice-add 'denote-sequence--sequence-prefix-p :override #'denote-dash--advice-sequence-prefix-p)
+  (advice-add 'denote-sequence--hierarchy-get-buffer :override #'denote-dash--advice-hierarchy-get-buffer)
+  (advice-add 'denote-sequence-hierarchy-find-file :around #'denote-dash--advice-hierarchy-track-origin)
+  (advice-add 'denote-review-set-date :around #'denote-dash--advice-review-set-date-target-file)
+  (advice-add 'denote-review-display-list :around #'denote-dash--advice-review-display-list)
+  (advice-add 'denote-link-ol-get-heading :around #'denote-dash--advice-link-ol-get-heading-org-only))
 
 (defun denote-dash-global--disable-advice ()
   "Disable advice managed by `denote-dash-global-mode'."
-  (advice-remove 'denote-sequence--format-hierarchy-entry #'ad:denote-dash--hierarchy-format-entry)
-  (advice-remove 'denote-sequence--hierarchy-insert #'ad:denote-dash--hierarchy-insert)
-  (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)
-  (advice-remove 'denote-sequence--hierarchy-get-buffer #'ad:denote-dash--hierarchy-get-buffer)
-  (advice-remove 'denote-sequence-hierarchy-find-file #'ad:denote-dash--hierarchy-track-origin)
-  (advice-remove 'denote-review-set-date #'ad:denote-dash--review-set-date-target-file)
-  (advice-remove 'denote-review-display-list #'ad:denote-dash--review-display-list)
-  (advice-remove 'denote-link-ol-get-heading #'ad:denote-dash--link-ol-get-heading-org-only))
+  (advice-remove 'denote-sequence--format-hierarchy-entry #'denote-dash--advice-hierarchy-format-entry)
+  (advice-remove 'denote-sequence--hierarchy-insert #'denote-dash--advice-hierarchy-insert)
+  (advice-remove 'denote-sequence--sequence-prefix-p #'denote-dash--advice-sequence-prefix-p)
+  (advice-remove 'denote-sequence--hierarchy-get-buffer #'denote-dash--advice-hierarchy-get-buffer)
+  (advice-remove 'denote-sequence-hierarchy-find-file #'denote-dash--advice-hierarchy-track-origin)
+  (advice-remove 'denote-review-set-date #'denote-dash--advice-review-set-date-target-file)
+  (advice-remove 'denote-review-display-list #'denote-dash--advice-review-display-list)
+  (advice-remove 'denote-link-ol-get-heading #'denote-dash--advice-link-ol-get-heading-org-only))
 
 (defun denote-dash-global--enable-hierarchy-keys ()
   "Bind denote-dash keys in `denote-sequence-hierarchy-mode-map'."

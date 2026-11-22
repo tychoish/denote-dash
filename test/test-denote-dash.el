@@ -1116,16 +1116,16 @@ exclusive major modes and can never be simultaneously reachable."
     (unwind-protect
         (progn
           (denote-dash-global-mode 1)
-          (should (advice-member-p #'ad:denote-dash--link-ol-get-heading-org-only 'denote-link-ol-get-heading))
+          (should (advice-member-p #'denote-dash--advice-link-ol-get-heading-org-only 'denote-link-ol-get-heading))
           (with-temp-buffer
             ;; In non-org buffer, returns nil
-            (should-not (ad:denote-dash--link-ol-get-heading-org-only (lambda () "Heading"))))
+            (should-not (denote-dash--advice-link-ol-get-heading-org-only (lambda () "Heading"))))
           (with-temp-buffer
             (org-mode)
             ;; In org-mode buffer, delegates to inner function
-            (should (equal "Heading" (ad:denote-dash--link-ol-get-heading-org-only (lambda () "Heading")))))
+            (should (equal "Heading" (denote-dash--advice-link-ol-get-heading-org-only (lambda () "Heading")))))
           (denote-dash-global-mode -1)
-          (should-not (advice-member-p #'ad:denote-dash--link-ol-get-heading-org-only 'denote-link-ol-get-heading)))
+          (should-not (advice-member-p #'denote-dash--advice-link-ol-get-heading-org-only 'denote-link-ol-get-heading)))
       (denote-dash-global-mode -1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1246,11 +1246,11 @@ exclusive major modes and can never be simultaneously reachable."
 (ert-deftest denote-dash-test/prefix-p-ignores-user-scheme ()
   "Alphanumeric notes match their prefix even with a numeric scheme."
   (let ((denote-sequence-scheme 'numeric))
-    (should (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a11"))
-    (should (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a11a2"))
-    (should (ad:denote-dash--sequence-prefix-p '("7") "7a11"))
-    (should-not (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "7a1"))
-    (should-not (ad:denote-dash--sequence-prefix-p '("7" "a" "11") "8a11"))))
+    (should (denote-dash--advice-sequence-prefix-p '("7" "a" "11") "7a11"))
+    (should (denote-dash--advice-sequence-prefix-p '("7" "a" "11") "7a11a2"))
+    (should (denote-dash--advice-sequence-prefix-p '("7") "7a11"))
+    (should-not (denote-dash--advice-sequence-prefix-p '("7" "a" "11") "7a1"))
+    (should-not (denote-dash--advice-sequence-prefix-p '("7" "a" "11") "8a11"))))
 
 (ert-deftest denote-dash-test/hierarchy-prefix-finds-notes-with-mismatched-scheme ()
   "Regression: a prefix view on 7a11 found nothing under a numeric scheme."
@@ -1261,10 +1261,10 @@ exclusive major modes and can never be simultaneously reachable."
           (denote-dash-test--make-seq-note dir "20240101T100000" "7a11" "Root")
           (denote-dash-test--make-seq-note dir "20240101T100100" "7a11a2" "Child")
           (denote-dash-test--make-seq-note dir "20240101T100200" "7a12" "Other")
-          (advice-add 'denote-sequence--sequence-prefix-p :override #'ad:denote-dash--sequence-prefix-p)
+          (advice-add 'denote-sequence--sequence-prefix-p :override #'denote-dash--advice-sequence-prefix-p)
           (unwind-protect
               (should (= 2 (length (denote-sequence-get-all-files-with-prefix "7a11"))))
-            (advice-remove 'denote-sequence--sequence-prefix-p #'ad:denote-dash--sequence-prefix-p)))
+            (advice-remove 'denote-sequence--sequence-prefix-p #'denote-dash--advice-sequence-prefix-p)))
       (delete-directory dir t))))
 
 (ert-deftest denote-dash-test/hierarchy-buffer-name-uses-series-title ()

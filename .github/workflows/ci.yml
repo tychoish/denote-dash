@@ -31,6 +31,8 @@ jobs:
         uses: tychoish/elisp-ci/lint@main
         with:
           elpaish: true
+          linters: "byte-compile checkdoc package-lint"
+          required-linters: "byte-compile checkdoc package-lint"
 
       - name: Run ERT Tests
         uses: tychoish/elisp-ci@main
